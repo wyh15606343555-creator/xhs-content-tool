@@ -1,0 +1,20 @@
+# ── API密钥 & 敏感文件 ──
+.streamlit/secrets.toml
+.env
+.env.*
+*.key
+*.pem
+
+# ── Python ──
+__pycache__/
+*.py[cod]
+*.egg-info/
+dist/
+build/
+
+# ── IDE ──
+.vscode/
+.idea/
+*.swp
+*.swo
+.DS_Store
