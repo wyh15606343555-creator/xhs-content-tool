@@ -456,11 +456,10 @@ def edit_image_with_gemini(api_key: str, image: Image.Image, prompt: str):
     img_copy.save(buf, format="PNG")
     img_bytes = buf.getvalue()
 
-    # 按优先级尝试多个模型（新 → 旧）
+    # 按优先级尝试（仅保留确认支持图片编辑的模型）
     models = [
-        "gemini-2.5-flash-preview-04-17",          # Gemini 2.5 Flash（最新preview）
-        "gemini-2.5-flash-image",                   # Gemini 2.5 Flash Image
-        "gemini-2.0-flash-exp-image-generation",    # 旧版fallback
+        "gemini-2.5-flash-image",                   # 最佳：2.5 Flash 图片专用版
+        "gemini-2.0-flash-exp-image-generation",    # 备选：2.0 实验版
     ]
 
     last_error = None
