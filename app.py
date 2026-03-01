@@ -356,6 +356,8 @@ _DEFAULTS = dict(
     daily_brief="",
     create_images=[],      # 用户上传的自己的图片
     dynamic_image_prompt="",   # Mode B 根据文案内容动态生成的图片处理提示词
+    scene_images=[],           # Mode B Imagen 3 生成的场景配图
+    scene_prompt="",           # Imagen 3 使用的场景描述提示词
     feedback_submitted=False,
 )
 for _k, _v in _DEFAULTS.items():
@@ -668,6 +670,80 @@ def generate_dynamic_image_prompt(copy_text: str, industry: dict) -> str:
     return resp.choices[0].message.content.strip()
 
 
+def generate_scene_from_copy(copy_text: str, industry: dict) -> tuple:
+    """Mode B：DeepSeek 将文案转为场景描述 → Imagen 3 生成全新配图。
+
+    与 edit_image_with_gemini 的本质区别：
+    - edit_image_with_gemini：修改已有图片（有输入图）
+    - generate_scene_from_copy：无中生有（无需输入图，纯文生图）
+
+    返回 (images: list[PIL.Image], scene_prompt: str, error_msg: str)
+    """
+    from openai import OpenAI
+    try:
+        from google import genai
+        from google.genai import types
+    except ImportError:
+        return [], "", "请先安装 google-genai 库"
+
+    # Step 1: DeepSeek 将文案情绪/场景转为 Imagen 3 的英文视觉描述
+    ds_client = OpenAI(api_key=_get_api_key("DEEPSEEK_API_KEY"), base_url="https://api.deepseek.com")
+    scene_system = (
+        "You are an expert at writing Imagen 3 image generation prompts for social media.\n"
+        "Given a Chinese XiaoHongShu post, write a detailed English prompt for Imagen 3.\n\n"
+        "Requirements:\n"
+        "1. Describe a specific scene, setting, lighting, and atmosphere matching the post's emotion\n"
+        "2. Include the generic product/food/environment type (do NOT mention brand names)\n"
+        "3. Style: professional lifestyle/product photography, ultra realistic\n"
+        "4. Portrait orientation 9:16, Instagram-worthy composition\n"
+        "5. Match emotional keywords from the post (warm, cozy, vibrant, elegant, fresh, etc.)\n"
+        "6. Output: one detailed English prompt only (3-4 sentences), no explanations, no Chinese\n\n"
+        f"Industry: {industry['label']}"
+    )
+    try:
+        ds_resp = ds_client.chat.completions.create(
+            model="deepseek-chat",
+            messages=[
+                {"role": "system", "content": scene_system},
+                {"role": "user", "content": f"Post content:\n{copy_text[:500]}"},
+            ],
+            temperature=0.6,
+            max_tokens=180,
+        )
+        scene_prompt = ds_resp.choices[0].message.content.strip()
+    except Exception as e:
+        return [], "", f"场景描述生成失败：{e}"
+
+    # Step 2: Imagen 3 文生图
+    gai_key = _get_api_key("GOOGLE_API_KEY")
+    if not gai_key:
+        return [], scene_prompt, "未配置 Google API Key"
+    g_client = genai.Client(api_key=gai_key)
+    try:
+        response = g_client.models.generate_images(
+            model="imagen-3.0-generate-001",
+            prompt=scene_prompt,
+            config=types.GenerateImagesConfig(
+                number_of_images=2,
+                aspect_ratio="9:16",
+            ),
+        )
+        images = []
+        for gi in (response.generated_images or []):
+            if gi.image and gi.image.image_bytes:
+                images.append(Image.open(io.BytesIO(gi.image.image_bytes)).convert("RGB"))
+        if images:
+            return images, scene_prompt, ""
+        return [], scene_prompt, "Imagen 3 未返回图片数据"
+    except Exception as e:
+        err = str(e)
+        if "quota" in err.lower():
+            return [], scene_prompt, "Imagen 3 配额不足，请稍后重试"
+        if "not found" in err.lower() or "404" in err:
+            return [], scene_prompt, "Imagen 3 模型暂不可用（需确认 Google AI 账号已开通此功能）"
+        return [], scene_prompt, f"生成失败：{err[:150]}"
+
+
 def edit_image_with_gemini(image: Image.Image, prompt: str):
     """调用 Gemini 编辑/美化图片，返回 (PIL.Image | None, error_msg)"""
     try:
@@ -862,6 +938,8 @@ for row_keys in rows:
                 st.session_state.daily_brief = ""
                 st.session_state.create_images = []
                 st.session_state.dynamic_image_prompt = ""
+                st.session_state.scene_images = []
+                st.session_state.scene_prompt = ""
                 st.rerun()
 
 if not st.session_state.industry_id:
@@ -1078,6 +1156,8 @@ else:
             st.session_state.rewrite_result = ""
             st.session_state.edited_images = []
             st.session_state.dynamic_image_prompt = ""
+            st.session_state.scene_images = []
+            st.session_state.scene_prompt = ""
             st.rerun()
 
     if st.session_state.content_ready and mode == "create":
@@ -1164,98 +1244,195 @@ if st.session_state.content_ready:
 
 # ═══════════════════════════════════════════════════════
 #  Step 3：图片处理
+#  Mode A：去水印（Gemini 编辑）
+#  Mode B：双方案 ─ 方案A 美化原图(Gemini) + 方案B AI生成配图(Imagen 3)
 # ═══════════════════════════════════════════════════════
-if st.session_state.rewrite_done and st.session_state.note_images:
+if st.session_state.rewrite_done and (st.session_state.note_images or mode == "create"):
     st.divider()
+    st.markdown('<span class="step-num">3</span> **图片处理**', unsafe_allow_html=True)
 
+    # ─── Mode A：竞品参考模式 → 去水印 / 去文字 ───
     if mode == "rewrite":
-        step3_title = "图片重绘（去水印 · 去文字）"
-        btn3_label = "🎨 一键重绘图片"
-        img_tip = "去除竞品水印和文字，图片内容保持不变"
+        st.caption("去除竞品水印和文字，图片内容保持不变")
+        img_prompt_r = industry["image_prompt"]
+
+        with st.expander("查看图片处理提示词", expanded=False):
+            st.code(img_prompt_r, language=None)
+
+        if st.button("🎨 一键重绘图片", type="primary", key="btn_img"):
+            n = len(st.session_state.note_images)
+            prog2 = st.progress(0, text="准备处理…")
+            edited, errors = [], []
+            for i, img in enumerate(st.session_state.note_images):
+                prog2.progress(i / n, text=f"正在处理第 {i+1}/{n} 张…")
+                result_img, err_msg = edit_image_with_gemini(img, img_prompt_r)
+                edited.append(result_img)
+                if err_msg:
+                    errors.append(f"图片 {i+1}：{err_msg}")
+            prog2.progress(1.0, text="处理完成！")
+            st.session_state.edited_images = edited
+            st.session_state.images_done = True
+            ok = sum(1 for x in edited if x)
+            if ok == n:
+                st.success(f"全部 {n} 张处理成功！")
+            elif ok:
+                st.warning(f"{ok}/{n} 张成功，{n-ok} 张失败")
+            else:
+                st.error("图片处理全部失败，可跳过直接用原图下载")
+            if errors:
+                with st.expander("查看错误详情"):
+                    for e in errors:
+                        st.caption(e)
+            st.rerun()
+
+        if st.session_state.images_done:
+            for i, (orig, ed) in enumerate(
+                zip(st.session_state.note_images, st.session_state.edited_images)
+            ):
+                c1, c2 = st.columns(2)
+                with c1:
+                    st.image(orig, caption=f"原图 {i+1}", use_container_width=True)
+                with c2:
+                    if ed:
+                        st.image(ed, caption=f"重绘后 {i+1}", use_container_width=True)
+                    else:
+                        st.warning(f"图片 {i+1} 处理失败")
+                        st.caption("可跳过，下载时使用原图")
+
+            if any(x is None for x in st.session_state.edited_images):
+                if st.button("🔄 重试失败的图片", key="btn_retry"):
+                    prog3 = st.progress(0, text="重试中…")
+                    for i, (img, ed) in enumerate(
+                        zip(st.session_state.note_images, st.session_state.edited_images)
+                    ):
+                        if ed is None:
+                            prog3.progress(i / len(st.session_state.note_images),
+                                           text=f"重试第 {i+1} 张…")
+                            new_img, _ = edit_image_with_gemini(img, img_prompt_r)
+                            if new_img:
+                                st.session_state.edited_images[i] = new_img
+                    prog3.progress(1.0, text="重试完成")
+                    st.rerun()
+
+    # ─── Mode B：原创模式 → 两种图片方案 ───
     else:
-        step3_title = "图片智能美化（匹配文案氛围）"
-        btn3_label = "🎨 一键美化图片"
-        img_tip = "AI 分析文案情绪，自动匹配光影/色调/氛围风格 — 注意：调整的是图片质感，不生成新场景"
+        st.caption("两种方案可单独使用，也可都做——最终选最好看的发布")
 
-    # 确定本次图片处理使用的提示词
-    # Mode B 优先使用根据文案动态生成的提示词；Mode A 使用行业静态提示词
-    img_prompt = (
-        st.session_state.dynamic_image_prompt
-        if (mode == "create" and st.session_state.dynamic_image_prompt)
-        else industry["image_prompt"]
-    )
-
-    st.markdown(f'<span class="step-num">3</span> **{step3_title}**', unsafe_allow_html=True)
-    st.caption(img_tip)
-
-    with st.expander("查看图片处理方案", expanded=False):
-        if mode == "create" and st.session_state.dynamic_image_prompt:
-            st.markdown("**AI 根据文案内容生成的专属美化指令：**")
-            st.info(st.session_state.dynamic_image_prompt)
-            st.caption("DeepSeek 分析了你的文案情绪和场景关键词，自动生成了最匹配的 Gemini 图片处理指令")
-        else:
-            st.code(img_prompt, language=None)
-
-    if st.button(btn3_label, type="primary", key="btn_img"):
-        n = len(st.session_state.note_images)
-        prog2 = st.progress(0, text="准备处理…")
-        edited = []
-        errors = []
-
-        for i, img in enumerate(st.session_state.note_images):
-            prog2.progress(i / n, text=f"正在处理第 {i+1}/{n} 张…")
-            result_img, err_msg = edit_image_with_gemini(img, img_prompt)
-            edited.append(result_img)
-            if err_msg:
-                errors.append(f"图片 {i+1}：{err_msg}")
-
-        prog2.progress(1.0, text="处理完成！")
-        st.session_state.edited_images = edited
-        st.session_state.images_done = True
-
-        success_count = sum(1 for x in edited if x is not None)
-        if success_count == n:
-            st.success(f"全部 {n} 张处理成功！")
-        elif success_count > 0:
-            st.warning(f"{success_count}/{n} 张成功，{n - success_count} 张失败")
-        else:
-            st.error("图片处理全部失败，可跳过此步骤直接用原图下载")
-
-        if errors:
-            with st.expander("查看错误详情"):
-                for e in errors:
-                    st.caption(e)
-        st.rerun()
-
-    if st.session_state.images_done:
-        for i, (orig, ed) in enumerate(
-            zip(st.session_state.note_images, st.session_state.edited_images)
-        ):
-            c1, c2 = st.columns(2)
-            with c1:
-                st.image(orig, caption=f"原图 {i+1}", use_container_width=True)
-            with c2:
-                if ed:
-                    caption2 = "重绘后" if mode == "rewrite" else "美化后"
-                    st.image(ed, caption=f"{caption2} {i+1}", use_container_width=True)
+        # ── 方案A：美化原图（仅当用户已上传图片时显示）──
+        if st.session_state.note_images:
+            st.markdown("**📸 方案A：美化原图** — AI 根据文案氛围调整光线 / 色调 / 质感")
+            img_prompt_a = (
+                st.session_state.dynamic_image_prompt
+                if st.session_state.dynamic_image_prompt
+                else industry["image_prompt"]
+            )
+            with st.expander("查看专属美化指令", expanded=False):
+                if st.session_state.dynamic_image_prompt:
+                    st.info(st.session_state.dynamic_image_prompt)
+                    st.caption("DeepSeek 根据你的文案情绪自动生成的 Gemini 图片处理指令")
                 else:
-                    st.warning(f"图片 {i+1} 处理失败")
-                    st.caption("可跳过，下载时使用原图")
+                    st.code(img_prompt_a, language=None)
 
-        if any(x is None for x in st.session_state.edited_images):
-            if st.button("🔄 重试失败的图片", key="btn_retry"):
-                prog3 = st.progress(0, text="重试中…")
-                for i, (img, ed) in enumerate(
+            if st.button("🎨 一键美化原图", type="primary", key="btn_img"):
+                n = len(st.session_state.note_images)
+                prog2 = st.progress(0, text="准备处理…")
+                edited, errors = [], []
+                for i, img in enumerate(st.session_state.note_images):
+                    prog2.progress(i / n, text=f"正在处理第 {i+1}/{n} 张…")
+                    result_img, err_msg = edit_image_with_gemini(img, img_prompt_a)
+                    edited.append(result_img)
+                    if err_msg:
+                        errors.append(f"图片 {i+1}：{err_msg}")
+                prog2.progress(1.0, text="处理完成！")
+                st.session_state.edited_images = edited
+                st.session_state.images_done = True
+                ok = sum(1 for x in edited if x)
+                if ok == n:
+                    st.success(f"全部 {n} 张美化成功！")
+                elif ok:
+                    st.warning(f"{ok}/{n} 张成功，{n-ok} 张失败")
+                else:
+                    st.error("美化全部失败，可用原图下载")
+                if errors:
+                    with st.expander("查看错误详情"):
+                        for e in errors:
+                            st.caption(e)
+                st.rerun()
+
+            if st.session_state.images_done:
+                for i, (orig, ed) in enumerate(
                     zip(st.session_state.note_images, st.session_state.edited_images)
                 ):
-                    if ed is None:
-                        prog3.progress(i / len(st.session_state.note_images),
-                                       text=f"重试第 {i+1} 张…")
-                        new_img, _ = edit_image_with_gemini(img, img_prompt)
-                        if new_img:
-                            st.session_state.edited_images[i] = new_img
-                prog3.progress(1.0, text="重试完成")
-                st.rerun()
+                    c1, c2 = st.columns(2)
+                    with c1:
+                        st.image(orig, caption=f"原图 {i+1}", use_container_width=True)
+                    with c2:
+                        if ed:
+                            st.image(ed, caption=f"美化后 {i+1}", use_container_width=True)
+                        else:
+                            st.warning(f"图片 {i+1} 处理失败")
+                            st.caption("可跳过，下载时使用原图")
+
+                if any(x is None for x in st.session_state.edited_images):
+                    if st.button("🔄 重试失败的图片", key="btn_retry"):
+                        prog3 = st.progress(0, text="重试中…")
+                        for i, (img, ed) in enumerate(
+                            zip(st.session_state.note_images, st.session_state.edited_images)
+                        ):
+                            if ed is None:
+                                prog3.progress(i / len(st.session_state.note_images),
+                                               text=f"重试第 {i+1} 张…")
+                                new_img, _ = edit_image_with_gemini(img, img_prompt_a)
+                                if new_img:
+                                    st.session_state.edited_images[i] = new_img
+                        prog3.progress(1.0, text="重试完成")
+                        st.rerun()
+
+            st.divider()
+
+        # ── 方案B：Imagen 3 文生图（无需上传照片）──
+        st.markdown("**🖼️ 方案B：AI 生成场景配图** — Imagen 3 根据文案内容全新创作")
+        st.info(
+            "✅ **无需上传照片**，AI 根据文案情绪自动生成专业配图\n\n"
+            "✅ 场景 / 光线 / 氛围与文案高度匹配，9:16 竖图，直接发小红书\n\n"
+            "⚠️ 生成的是通用场景图，**不含你店铺的特定产品/装修**\n"
+            "→ 适合：没有好照片时 / 想要更精致的场景封面 / 与自己实拍图混搭"
+        )
+
+        col_gen, col_regen = st.columns([2, 1])
+        with col_gen:
+            btn_gen = st.button("🖼️ 生成AI配图（2张）", type="primary",
+                                key="btn_gen_scene", use_container_width=True)
+        with col_regen:
+            btn_regen = (
+                st.button("🔄 换一批", key="btn_regen_scene", use_container_width=True)
+                if st.session_state.scene_images else None
+            )
+
+        if btn_gen or btn_regen:
+            with st.spinner("Imagen 3 正在生成… 约 15~30 秒 ⏳"):
+                imgs, s_prompt, s_err = generate_scene_from_copy(
+                    st.session_state.rewrite_result, industry
+                )
+            if imgs:
+                st.session_state.scene_images = imgs
+                st.session_state.scene_prompt = s_prompt
+                st.success(f"生成成功！共 {len(imgs)} 张 · 9:16 竖图")
+            else:
+                st.error(f"生成失败：{s_err}")
+                if s_prompt:
+                    st.caption(f"场景描述：{s_prompt}")
+            st.rerun()
+
+        if st.session_state.scene_images:
+            img_cols = st.columns(min(len(st.session_state.scene_images), 4))
+            for i, img in enumerate(st.session_state.scene_images):
+                with img_cols[i % 4]:
+                    st.image(img, caption=f"AI配图 {i+1}", use_container_width=True)
+
+            with st.expander("查看生成使用的场景描述提示词", expanded=False):
+                st.info(st.session_state.scene_prompt)
+                st.caption("DeepSeek 根据文案内容生成，发送给 Imagen 3 执行")
 
 
 # ═══════════════════════════════════════════════════════
@@ -1306,6 +1483,23 @@ if st.session_state.rewrite_done:
                 "📦 文案+原图（ZIP）",
                 data=zip_orig,
                 file_name=f"文案加原图_{ts}.zip",
+                mime="application/zip",
+                use_container_width=True,
+            )
+
+    # Mode B：AI生成配图额外下载行
+    if mode == "create" and st.session_state.scene_images:
+        ca, _, _ = st.columns(3)
+        with ca:
+            zip_scene = make_zip(
+                st.session_state.rewrite_result[:60],
+                st.session_state.rewrite_result,
+                st.session_state.scene_images,
+            )
+            st.download_button(
+                "🖼️ 文案+AI配图（ZIP）",
+                data=zip_scene,
+                file_name=f"AI配图_{ts}.zip",
                 mime="application/zip",
                 use_container_width=True,
             )
