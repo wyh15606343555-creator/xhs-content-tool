@@ -1,6 +1,6 @@
 """
-小红书内容智能处理工具 - Demo v2.0
-一键粘贴 → 自动提取 → DeepSeek改写 → Gemini图片重绘 → 打包下载
+小红书通用内容 Agent — Demo v3.0
+邀请码测试版 | 多行业支持 | API Key 预置
 """
 
 import streamlit as st
@@ -18,14 +18,17 @@ from PIL import Image
 #  页面配置
 # ═══════════════════════════════════════════════════════
 st.set_page_config(
-    page_title="小红书内容工具 - Demo",
+    page_title="小红书内容 Agent · 测试版",
     page_icon="📱",
     layout="wide",
     initial_sidebar_state="expanded",
 )
 
-st.markdown("""<style>
+st.markdown("""
+<style>
 .block-container { padding-top: 1.5rem; }
+
+/* 主色 */
 div.stButton > button[kind="primary"] {
     background-color: #ff2442;
     border: none;
@@ -34,6 +37,8 @@ div.stButton > button[kind="primary"]:hover {
     background-color: #e6203c;
     border: none;
 }
+
+/* 步骤圆圈 */
 .step-num {
     display: inline-block;
     background: #ff2442;
@@ -46,24 +51,165 @@ div.stButton > button[kind="primary"]:hover {
     font-size: 14px;
     margin-right: 6px;
 }
-.status-ok { color: #10b981; font-weight: bold; }
-.status-partial { color: #f59e0b; font-weight: bold; }
-.status-fail { color: #ef4444; font-weight: bold; }
-</style>""", unsafe_allow_html=True)
+
+/* 行业卡片 */
+.industry-card {
+    border: 2px solid #e5e7eb;
+    border-radius: 12px;
+    padding: 20px 16px;
+    text-align: center;
+    cursor: pointer;
+    transition: all 0.2s;
+    background: white;
+}
+.industry-card:hover {
+    border-color: #ff2442;
+    box-shadow: 0 4px 12px rgba(255,36,66,0.15);
+}
+.industry-card.selected {
+    border-color: #ff2442;
+    background: #fff5f6;
+}
+.industry-icon { font-size: 2.5rem; margin-bottom: 8px; }
+.industry-name { font-size: 1rem; font-weight: bold; color: #1f2937; }
+.industry-desc { font-size: 0.78rem; color: #6b7280; margin-top: 4px; }
+
+/* 邀请码页 */
+.gate-box {
+    max-width: 400px;
+    margin: 80px auto;
+    text-align: center;
+}
+.gate-title { font-size: 2rem; font-weight: bold; margin-bottom: 8px; }
+.gate-sub { color: #6b7280; margin-bottom: 32px; }
+
+/* 反馈星星 */
+.star { font-size: 1.5rem; cursor: pointer; }
+</style>
+""", unsafe_allow_html=True)
+
 
 # ═══════════════════════════════════════════════════════
-#  Session State
+#  行业模板库
+# ═══════════════════════════════════════════════════════
+INDUSTRIES = {
+    "fitness": {
+        "label": "💪 健身私教",
+        "desc": "上门私教 / 减脂增肌 / 产后恢复",
+        "system_prompt": (
+            "你是专业的健身私教小红书文案改写专家。\n\n"
+            "改写规则：\n"
+            "1. 保留原文核心卖点（效果数据、课程亮点、真实反馈）\n"
+            "2. 完全更换表达方式，改写率 > 70%\n"
+            "3. 风格：专业权威+亲切真实，口语化，适当使用 emoji\n"
+            "4. 融入城市本地元素（地标、商圈、区域名）\n"
+            "5. 保留并优化话题标签（#xxx）\n"
+            "6. 强调「效果」「专业」「上门服务」「变化」等高转化词\n\n"
+            "请严格按以下格式输出：\n"
+            "【标题】改写后的标题\n"
+            "【正文】改写后的正文"
+        ),
+        "image_prompt": (
+            "Remove ALL text, titles, captions, watermarks, logos, and any overlaid "
+            "text or graphics from this fitness/workout image completely. "
+            "Reconstruct the areas behind removed text naturally. "
+            "Do NOT change any people, faces, poses, clothing, gym equipment, or background. "
+            "The output should look like a clean, professional fitness photo."
+        ),
+    },
+    "food": {
+        "label": "🍜 餐饮美食",
+        "desc": "餐厅 / 咖啡馆 / 烘焙甜品 / 探店",
+        "system_prompt": (
+            "你是专业的餐饮探店小红书文案改写专家。\n\n"
+            "改写规则：\n"
+            "1. 保留核心卖点（招牌菜、环境特色、价格、必点单品）\n"
+            "2. 完全更换表达方式，改写率 > 70%\n"
+            "3. 风格：有食欲感、温馨治愈，口语化，适当使用 emoji\n"
+            "4. 融入城市餐饮文化和区域特色\n"
+            "5. 多用「宝藏小店」「必吃」「探店」等高流量词\n"
+            "6. 结尾可加人均价格和推荐指数\n\n"
+            "请严格按以下格式输出：\n"
+            "【标题】改写后的标题\n"
+            "【正文】改写后的正文"
+        ),
+        "image_prompt": (
+            "Remove ALL text, watermarks, logos, price tags, and overlaid graphics "
+            "from this food/restaurant image completely. "
+            "Reconstruct the areas naturally. "
+            "Keep the food, drinks, dishes, restaurant atmosphere, and lighting exactly the same. "
+            "The result should look like an appetizing, professional food photo."
+        ),
+    },
+    "beauty": {
+        "label": "💄 美容美发",
+        "desc": "护肤 / 美甲 / 发型设计 / 美容院",
+        "system_prompt": (
+            "你是专业的美容美发小红书文案改写专家。\n\n"
+            "改写规则：\n"
+            "1. 保留核心卖点（效果对比、技术亮点、价格、使用感受）\n"
+            "2. 完全更换表达方式，改写率 > 70%\n"
+            "3. 风格：精致时尚、有种草感，口语化，适当使用 emoji\n"
+            "4. 强调「变美」「蜕变」「显白」「专业技术」等高转化词\n"
+            "5. 可加入使用前后对比的描述\n"
+            "6. 融入城市消费和审美特点\n\n"
+            "请严格按以下格式输出：\n"
+            "【标题】改写后的标题\n"
+            "【正文】改写后的正文"
+        ),
+        "image_prompt": (
+            "Remove ALL text, watermarks, logos, price information, and overlaid graphics "
+            "from this beauty/hair/cosmetic image completely. "
+            "Reconstruct the areas naturally. "
+            "Keep the hairstyle, makeup, beauty results, and the person exactly the same. "
+            "The result should look glamorous and professional."
+        ),
+    },
+    "education": {
+        "label": "📚 教育培训",
+        "desc": "技能培训 / 考证备考 / 儿童教育",
+        "system_prompt": (
+            "你是专业的教育培训小红书文案改写专家。\n\n"
+            "改写规则：\n"
+            "1. 保留核心卖点（课程内容、学员成果、师资力量、价格）\n"
+            "2. 完全更换表达方式，改写率 > 70%\n"
+            "3. 风格：专业可信、激励感强，适当使用 emoji\n"
+            "4. 强调「学会」「提升」「改变」「拿证」「成功上岸」等激励词\n"
+            "5. 可加入学员真实反馈或成绩数据\n"
+            "6. 结尾引导报名/咨询\n\n"
+            "请严格按以下格式输出：\n"
+            "【标题】改写后的标题\n"
+            "【正文】改写后的正文"
+        ),
+        "image_prompt": (
+            "Remove ALL text, watermarks, logos, and overlaid graphics "
+            "from this education/training image completely. "
+            "Reconstruct the areas naturally. "
+            "Keep the students, teachers, learning materials, and classroom setting exactly the same. "
+            "The result should look professional and inspiring."
+        ),
+    },
+}
+
+
+# ═══════════════════════════════════════════════════════
+#  Session State 初始化
 # ═══════════════════════════════════════════════════════
 _DEFAULTS = dict(
+    authed=False,
+    invite_code="",
+    industry_id=None,          # 选中的行业 key
+    city="北京",
     note_title="",
     note_text="",
-    note_images=[],          # list[PIL.Image]
+    note_images=[],
     rewrite_result="",
-    edited_images=[],        # list[PIL.Image | None]
+    edited_images=[],
     content_ready=False,
     rewrite_done=False,
     images_done=False,
-    extract_log="",          # 提取过程日志
+    extract_log="",
+    feedback_submitted=False,
 )
 for _k, _v in _DEFAULTS.items():
     if _k not in st.session_state:
@@ -74,217 +220,140 @@ for _k, _v in _DEFAULTS.items():
 #  工具函数
 # ═══════════════════════════════════════════════════════
 
-def _resolve_key(user_input: str, name: str) -> str:
-    """优先级：用户侧边栏输入 > Streamlit Secrets（本地secrets.toml 或 Cloud Secrets）"""
-    if user_input and user_input.strip():
-        return user_input.strip()
+def check_invite_code(code: str) -> bool:
+    """校验邀请码（从 secrets.toml 读取）"""
     try:
-        val = st.secrets.get(name, "")
-        if val:
-            return val
+        raw = st.secrets.get("INVITE_CODES", "")
+        valid = [c.strip().upper() for c in raw.split(",") if c.strip()]
+        if not valid:
+            return True  # 未配置邀请码时开放访问（本地开发模式）
+        return code.strip().upper() in valid
     except Exception:
-        pass
-    return ""
+        return True
 
 
-# ── 多组UA轮换 ──
+def _get_api_key(name: str) -> str:
+    """从 secrets 读取 API Key"""
+    try:
+        return st.secrets.get(name, "")
+    except Exception:
+        return ""
+
+
 _USER_AGENTS = [
-    # iPhone Safari
     "Mozilla/5.0 (iPhone; CPU iPhone OS 17_4 like Mac OS X) "
     "AppleWebKit/605.1.15 (KHTML, like Gecko) "
     "Version/17.4 Mobile/15E148 Safari/604.1",
-    # Android Chrome
     "Mozilla/5.0 (Linux; Android 14; Pixel 8 Pro) "
     "AppleWebKit/537.36 (KHTML, like Gecko) "
     "Chrome/121.0.6167.178 Mobile Safari/537.36",
-    # 微信内置浏览器
     "Mozilla/5.0 (iPhone; CPU iPhone OS 17_3_1 like Mac OS X) "
     "AppleWebKit/605.1.15 (KHTML, like Gecko) Mobile/15E148 "
     "MicroMessenger/8.0.47(0x18002f30) NetType/WIFI Language/zh_CN",
-    # iPad Safari
-    "Mozilla/5.0 (iPad; CPU OS 17_4 like Mac OS X) "
-    "AppleWebKit/605.1.15 (KHTML, like Gecko) "
-    "Version/17.4 Mobile/15E148 Safari/604.1",
 ]
 
 
 def _make_session():
-    """创建一个带完整浏览器指纹的 requests Session"""
     s = requests.Session()
-    ua = random.choice(_USER_AGENTS)
     s.headers.update({
-        "User-Agent": ua,
+        "User-Agent": random.choice(_USER_AGENTS),
         "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
         "Accept-Language": "zh-CN,zh;q=0.9,en;q=0.8",
         "Accept-Encoding": "gzip, deflate, br",
         "Connection": "keep-alive",
         "Upgrade-Insecure-Requests": "1",
-        "Sec-Fetch-Dest": "document",
-        "Sec-Fetch-Mode": "navigate",
-        "Sec-Fetch-Site": "none",
-        "Sec-Fetch-User": "?1",
         "Cache-Control": "max-age=0",
     })
     return s
 
 
 def _extract_url(raw: str) -> str:
-    """从小红书分享文本中提取URL"""
     m = re.search(r'https?://[^\s，,、!！\]】]+', raw)
     return m.group(0).rstrip('.,;:!?。，；：！？') if m else raw.strip()
 
 
 def _extract_share_title(raw: str) -> str:
-    """从分享文本中提取标题（URL前面的文字部分）"""
     m = re.search(r'https?://', raw)
     if not m:
         return ""
     before = raw[:m.start()].strip()
-    # 清理常见前缀/后缀噪音
-    before = re.sub(r'^\d+\s*', '', before)  # 去掉开头数字
-    before = before.rstrip('.,。，…、 ')
-    # 如果太短可能只是噪音
-    if len(before) < 4:
-        return ""
-    return before
+    before = re.sub(r'^\d+\s*', '', before).rstrip('.,。，…、 ')
+    return before if len(before) >= 4 else ""
 
 
-# 无用的标题（只是小红书站名，不是笔记内容）
 _GARBAGE_TITLES = {"小红书", "小红书 - 你的生活指南", "发现 - 小红书", ""}
 
 
 def _is_useful_title(t: str) -> bool:
-    """判断标题是否有实际内容（而不是网站名称）"""
     return bool(t) and t.strip() not in _GARBAGE_TITLES and len(t.strip()) > 3
 
 
-# ── 图片重绘预设模式 ──
-_IMAGE_PROMPT_PRESETS = {
-    "去除文字水印（推荐）": (
-        "Remove ALL text, titles, captions, watermarks, logos, and any overlaid "
-        "text or graphics from this image completely. "
-        "Reconstruct the areas behind the removed text naturally using the "
-        "surrounding visual context. "
-        "Do NOT change any people, faces, objects, poses, clothing, or the background. "
-        "The output should look like the original clean photo without any text overlays."
-    ),
-    "去文字 + 暖色调微调": (
-        "Edit this image with these specific changes: "
-        "1) Remove ALL text, watermarks, logos, and overlaid graphics completely. "
-        "2) Adjust the overall color temperature to be slightly warmer and brighter. "
-        "3) Add a subtle professional lighting enhancement. "
-        "Keep all people, faces, objects, poses, and the scene exactly the same."
-    ),
-    "转为手绘插画风格": (
-        "Transform this photograph into a clean, modern digital illustration: "
-        "- Remove all text, watermarks, and overlaid graphics. "
-        "- Convert the realistic photo into a stylized hand-drawn illustration. "
-        "- Use bright, warm, inviting color palette. "
-        "- Maintain the same composition, people's poses, and activities. "
-        "- Style: professional fitness and wellness brand illustration."
-    ),
-    "更换人物外观（全身重绘）": (
-        "Replace the main person in this image with a completely different person: "
-        "- Generate a new person with different facial features, hairstyle, and body build. "
-        "- The new person should wear similar style athletic clothing but in different colors. "
-        "- Maintain the same general pose and activity. "
-        "- Remove all text, watermarks, and overlaid graphics. "
-        "- Keep the background and setting unchanged. "
-        "- The result must look like a natural, professional fitness photograph."
-    ),
-    "自定义提示词": "",
-}
-
-
 def try_extract_xhs(raw_input: str, progress_callback=None):
-    """
-    增强版提取：多策略尝试。
-    返回 (title, text, image_urls, log_messages)
-    """
+    """多策略提取小红书内容，返回 (title, text, image_urls, logs)"""
     logs = []
     url = _extract_url(raw_input)
     share_title = _extract_share_title(raw_input)
-
     if share_title:
-        logs.append(f"从分享文本识别到标题片段：「{share_title[:40]}」")
-
+        logs.append(f"从分享文本识别标题片段：「{share_title[:40]}」")
     if not url.startswith("http"):
         logs.append("未找到有效链接")
         return share_title, "", [], logs
 
     logs.append(f"提取到链接：{url}")
-
-    # ── 策略1：带完整浏览器指纹的Session请求 ──
-    if progress_callback:
-        progress_callback(0.1, "策略1：模拟手机浏览器访问…")
-
     session = _make_session()
-    title, text, images = "", "", []
+    title, text, images, note_id = "", "", [], ""
 
     for attempt in range(2):
         try:
             if attempt > 0:
-                session = _make_session()  # 换一个UA重试
+                session = _make_session()
                 time.sleep(0.5)
-                logs.append(f"重试第{attempt + 1}次（更换浏览器指纹）")
+                logs.append(f"重试第 {attempt + 1} 次（更换浏览器指纹）")
+            if progress_callback:
+                progress_callback(0.1 + attempt * 0.1, f"策略1：模拟手机浏览器访问（第{attempt+1}次）…")
 
             resp = session.get(url, timeout=15, allow_redirects=True)
             final_url = resp.url
             logs.append(f"最终URL：{final_url}（状态码 {resp.status_code}）")
-
             if resp.status_code != 200:
                 continue
 
             html = resp.text
-
-            # 提取 note_id 备用
-            note_id = ""
             nid = re.search(r'/(?:explore|discovery/item)/([a-f0-9]{24})', final_url)
             if nid:
                 note_id = nid.group(1)
                 logs.append(f"笔记ID：{note_id}")
 
-            # ── 方法A：og tags ──
-            t = re.search(
-                r'<meta[^>]+property="og:title"[^>]+content="([^"]*)"', html
-            )
-            if not t:
-                t = re.search(
-                    r'<meta[^>]+content="([^"]*)"[^>]+property="og:title"', html
-                )
-            if t:
-                title = t.group(1)
-
-            for pattern in [
+            # 方法A：og tags
+            for pat in [
+                r'<meta[^>]+property="og:title"[^>]+content="([^"]*)"',
+                r'<meta[^>]+content="([^"]*)"[^>]+property="og:title"',
+            ]:
+                t = re.search(pat, html)
+                if t:
+                    title = t.group(1)
+                    break
+            for pat in [
                 r'<meta[^>]+property="og:description"[^>]+content="([^"]*)"',
                 r'<meta[^>]+name="description"[^>]+content="([^"]*)"',
                 r'<meta[^>]+content="([^"]*)"[^>]+property="og:description"',
             ]:
-                d = re.search(pattern, html)
+                d = re.search(pat, html)
                 if d and len(d.group(1)) > len(text):
                     text = d.group(1)
+            for pat in [
+                r'<meta[^>]+property="og:image"[^>]+content="([^"]*)"',
+                r'<meta[^>]+content="([^"]*)"[^>]+property="og:image"',
+            ]:
+                for m in re.finditer(pat, html):
+                    if m.group(1) and m.group(1) not in images:
+                        images.append(m.group(1))
 
-            for m in re.finditer(
-                r'<meta[^>]+property="og:image"[^>]+content="([^"]*)"', html
-            ):
-                img_url = m.group(1)
-                if img_url and img_url not in images:
-                    images.append(img_url)
-            # 也尝试反向属性顺序
-            for m in re.finditer(
-                r'<meta[^>]+content="([^"]*)"[^>]+property="og:image"', html
-            ):
-                img_url = m.group(1)
-                if img_url and img_url not in images:
-                    images.append(img_url)
-
-            if (_is_useful_title(title) and text) or (text and len(text) > 10) or (images and len(images) > 0):
-                logs.append(f"og:tags 提取成功 ✓（标题{len(title)}字，正文{len(text)}字，{len(images)}张图）")
+            if (_is_useful_title(title) and text) or len(text) > 10 or images:
+                logs.append(f"og:tags 提取成功（标题{len(title)}字，正文{len(text)}字，{len(images)}张图）")
                 break
-            elif title or text:
-                logs.append(f"og:tags 有部分数据（标题{len(title)}字，正文{len(text)}字，{len(images)}张图），继续尝试…")
 
-            # ── 方法B：__INITIAL_STATE__ ──
+            # 方法B：INITIAL_STATE
             state = re.search(
                 r'window\.__INITIAL_STATE__\s*=\s*(\{.+?\})\s*</script>',
                 html, re.DOTALL,
@@ -294,141 +363,96 @@ def try_extract_xhs(raw_input: str, progress_callback=None):
                 try:
                     data = json.loads(raw_json)
                     _note = None
-
-                    # 路径1（新版）: noteData.data.noteData
                     nd = data.get("noteData", {})
                     nd_inner = nd.get("data", {}).get("noteData", {})
                     if nd_inner and nd_inner.get("title"):
                         _note = nd_inner
-
-                    # 路径1b: normalNotePreloadData（备用）
                     if not _note:
                         preload = nd.get("normalNotePreloadData", {})
                         if preload and preload.get("title"):
                             _note = preload
-
-                    # 路径2（旧版）: note.noteDetailMap
                     if not _note:
                         note_map = data.get("note", {}).get("noteDetailMap", {})
                         if note_map:
                             _note = list(note_map.values())[0].get("note", {})
-
                     if _note and (_note.get("title") or _note.get("desc")):
                         title = _note.get("title", "") or title
                         text = _note.get("desc", "") or text
-                        # 提取图片（兼容多种字段名）
-                        img_list = _note.get("imageList", []) or _note.get("imagesList", [])
-                        for img in img_list:
-                            u = (img.get("url", "")
-                                 or img.get("urlDefault", "")
-                                 or img.get("urlSizeLarge", ""))
+                        for img in (_note.get("imageList", []) or _note.get("imagesList", [])):
+                            u = img.get("url") or img.get("urlDefault") or img.get("urlSizeLarge") or ""
                             if u and u not in images:
                                 images.append(u)
-                        logs.append(
-                            f"INITIAL_STATE 提取成功 ✓"
-                            f"（标题{len(title)}字，正文{len(text)}字，{len(images)}张图）"
-                        )
+                        logs.append(f"INITIAL_STATE 提取成功（标题{len(title)}字，正文{len(text)}字，{len(images)}张图）")
                         break
-                    else:
-                        logs.append(f"INITIAL_STATE 存在但未找到笔记数据（keys: {list(data.keys())}）")
                 except json.JSONDecodeError:
                     logs.append("INITIAL_STATE JSON解析失败")
 
-            # ── 方法C：从HTML正文提取更多线索 ──
+            # 方法C：title 标签
             title_tag = re.search(r'<title[^>]*>([^<]+)</title>', html)
             if title_tag and not _is_useful_title(title):
-                raw_title = title_tag.group(1).strip()
-                # 去掉 " - 小红书" 后缀
-                raw_title = re.sub(r'\s*[-–—|]\s*小红书.*$', '', raw_title)
-                if _is_useful_title(raw_title):
-                    title = raw_title
-                    logs.append(f"从 <title> 标签提取标题：「{title[:30]}」")
-                else:
-                    logs.append(f"<title> 标签内容无用：「{raw_title}」，跳过")
+                raw_t = re.sub(r'\s*[-–—|]\s*小红书.*$', '', title_tag.group(1).strip())
+                if _is_useful_title(raw_t):
+                    title = raw_t
+                    logs.append(f"从 <title> 提取：「{title[:30]}」")
 
         except requests.exceptions.Timeout:
-            logs.append(f"第{attempt + 1}次请求超时")
+            logs.append(f"第{attempt+1}次请求超时")
         except Exception as e:
-            logs.append(f"第{attempt + 1}次请求异常：{type(e).__name__}")
+            logs.append(f"第{attempt+1}次异常：{type(e).__name__}")
 
-    # ── 策略2：如果笔记ID可用，尝试XHS web API ──
+    # 策略2：笔记ID直接请求
     if not title and not text and note_id:
         if progress_callback:
-            progress_callback(0.5, "策略2：尝试API接口…")
+            progress_callback(0.5, "策略2：尝试备用接口…")
         try:
-            api_url = f"https://www.xiaohongshu.com/explore/{note_id}"
-            session2 = _make_session()
-            session2.headers["Referer"] = "https://www.xiaohongshu.com/"
-            resp2 = session2.get(api_url, timeout=15, allow_redirects=True)
-            if resp2.status_code == 200:
-                html2 = resp2.text
-                t2 = re.search(
-                    r'<meta[^>]+property="og:title"[^>]+content="([^"]*)"', html2
-                )
-                if t2:
-                    title = t2.group(1)
-                d2 = re.search(
+            s2 = _make_session()
+            s2.headers["Referer"] = "https://www.xiaohongshu.com/"
+            r2 = s2.get(f"https://www.xiaohongshu.com/explore/{note_id}", timeout=15, allow_redirects=True)
+            if r2.status_code == 200:
+                for pat in [
+                    r'<meta[^>]+property="og:title"[^>]+content="([^"]*)"',
                     r'<meta[^>]+(?:property="og:description"|name="description")[^>]+content="([^"]*)"',
-                    html2,
-                )
-                if d2:
-                    text = d2.group(1)
-                for m2 in re.finditer(
-                    r'<meta[^>]+property="og:image"[^>]+content="([^"]*)"', html2
-                ):
-                    if m2.group(1) not in images:
-                        images.append(m2.group(1))
+                ]:
+                    m2 = re.search(pat, r2.text)
+                    if m2:
+                        if "title" in pat:
+                            title = m2.group(1)
+                        else:
+                            text = m2.group(1)
                 if title or text:
-                    logs.append(f"API策略提取成功 ✓")
+                    logs.append("备用接口提取成功")
         except Exception:
-            logs.append("API策略未成功")
+            logs.append("备用接口未成功")
 
-    # ── 最终兜底：优先使用分享文本中更完整的标题 ──
+    # 兜底：优先使用分享文本标题
     if share_title and (not _is_useful_title(title) or len(share_title) > len(title) * 2):
-        logs.append(f"使用分享文本中的完整标题（优于网页标题「{title}」）")
+        logs.append(f"使用分享文本标题（替代「{title}」）")
         title = share_title
 
-    if title or text:
-        logs.append(f"最终结果：标题{len(title)}字，正文{len(text)}字，{len(images)}张图片")
-    else:
-        logs.append("所有策略均未成功提取到内容")
-
+    logs.append(
+        f"最终结果：标题{len(title)}字，正文{len(text)}字，{len(images)}张图"
+        if (title or text) else "所有策略均未成功"
+    )
     return title, text, images, logs
 
 
 def download_image_url(url: str):
-    """下载图片返回 PIL Image"""
     try:
-        session = _make_session()
-        session.headers["Referer"] = "https://www.xiaohongshu.com/"
-        r = session.get(url, timeout=15)
+        s = _make_session()
+        s.headers["Referer"] = "https://www.xiaohongshu.com/"
+        r = s.get(url, timeout=15)
         r.raise_for_status()
         return Image.open(io.BytesIO(r.content)).convert("RGB")
     except Exception:
         return None
 
 
-def rewrite_with_deepseek(api_key: str, title: str, text: str, track: str, city: str) -> str:
-    """调用 DeepSeek 改写文案"""
+def rewrite_with_deepseek(title: str, text: str, industry: dict, city: str) -> str:
+    """调用 DeepSeek 按行业模板改写文案"""
     from openai import OpenAI
-
+    api_key = _get_api_key("DEEPSEEK_API_KEY")
     client = OpenAI(api_key=api_key, base_url="https://api.deepseek.com")
-
-    system = f"""你是专业的小红书文案改写专家。
-
-改写规则：
-1. 保留原文核心卖点和信息结构
-2. 完全更换表达方式，改写率 > 70%
-3. 赛道风格：{track}
-4. 保持小红书写作风格（口语化、有感染力、适当使用 emoji）
-5. 保留并优化话题标签（#xxx#）
-6. 融入{city}本地元素（地标、商圈、区域名）
-7. 标题要有吸引力，适合小红书搜索
-
-请严格按以下格式输出：
-【标题】改写后的标题
-【正文】改写后的正文"""
-
+    system = industry["system_prompt"] + f"\n\n目标城市：{city}"
     resp = client.chat.completions.create(
         model="deepseek-chat",
         messages=[
@@ -441,72 +465,63 @@ def rewrite_with_deepseek(api_key: str, title: str, text: str, track: str, city:
     return resp.choices[0].message.content
 
 
-def edit_image_with_gemini(api_key: str, image: Image.Image, prompt: str):
-    """调用 Google Gemini API 编辑图片"""
-    from google import genai
-    from google.genai import types
+def edit_image_with_gemini(image: Image.Image, prompt: str):
+    """调用 Gemini 编辑图片，返回 (PIL.Image | None, error_msg)"""
+    try:
+        from google import genai
+        from google.genai import types
+    except ImportError:
+        return None, "请先安装 google-genai 库"
+
+    api_key = _get_api_key("GOOGLE_API_KEY")
+    if not api_key:
+        return None, "未配置 Google API Key"
 
     client = genai.Client(api_key=api_key)
-
-    # 缩小图片以减少传输量和处理时间
     img_copy = image.copy()
     img_copy.thumbnail((1024, 1024))
-
     buf = io.BytesIO()
     img_copy.save(buf, format="PNG")
-    img_bytes = buf.getvalue()
 
-    # 按优先级尝试（仅保留确认支持图片编辑的模型）
     models = [
-        "gemini-2.5-flash-image",                   # 最佳：2.5 Flash 图片专用版
-        "gemini-2.0-flash-exp-image-generation",    # 备选：2.0 实验版
+        "gemini-2.5-flash-image",
+        "gemini-2.0-flash-exp-image-generation",
     ]
-
-    last_error = None
+    last_error = "未知错误"
     for model_name in models:
         try:
             response = client.models.generate_content(
                 model=model_name,
                 contents=[
-                    types.Part.from_bytes(data=img_bytes, mime_type="image/png"),
+                    types.Part.from_bytes(data=buf.getvalue(), mime_type="image/png"),
                     prompt,
                 ],
                 config=types.GenerateContentConfig(
                     response_modalities=["IMAGE", "TEXT"],
                 ),
             )
-
             if response.candidates:
                 for part in response.candidates[0].content.parts:
                     if (
                         hasattr(part, "inline_data")
                         and part.inline_data
-                        and hasattr(part.inline_data, "mime_type")
-                        and part.inline_data.mime_type
-                        and part.inline_data.mime_type.startswith("image/")
+                        and getattr(part.inline_data, "mime_type", "").startswith("image/")
                     ):
-                        st.toast(f"使用模型: {model_name}", icon="✅")
-                        return Image.open(io.BytesIO(part.inline_data.data)).convert("RGB")
-            # 有响应但无图片
-            last_error = f"{model_name}: 返回了响应但无图片数据"
+                        return Image.open(io.BytesIO(part.inline_data.data)).convert("RGB"), ""
+            last_error = f"{model_name}：返回响应但无图片数据"
         except Exception as e:
-            err_msg = str(e)
-            if "leaked" in err_msg.lower():
-                last_error = f"{model_name}: API Key已泄露，请更换"
-            elif "404" in err_msg:
-                last_error = f"{model_name}: 模型不可用"
+            err = str(e)
+            if "404" in err:
+                last_error = f"{model_name}：模型暂不可用"
+            elif "quota" in err.lower():
+                last_error = "API 配额已用尽，请稍后重试"
             else:
-                last_error = f"{model_name}: {err_msg[:100]}"
-            continue
+                last_error = f"{model_name}：{err[:120]}"
 
-    # 所有模型都失败
-    if last_error:
-        st.toast(f"图片重绘失败: {last_error}", icon="❌")
-    return None
+    return None, last_error
 
 
 def make_zip(title: str, text: str, images: list) -> io.BytesIO:
-    """打包文案 + 图片为 ZIP"""
     buf = io.BytesIO()
     ts = datetime.now().strftime("%Y%m%d_%H%M%S")
     with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as zf:
@@ -514,240 +529,236 @@ def make_zip(title: str, text: str, images: list) -> io.BytesIO:
         for i, img in enumerate(images):
             ib = io.BytesIO()
             img.save(ib, format="JPEG", quality=95)
-            zf.writestr(f"图片_{i + 1}.jpg", ib.getvalue())
+            zf.writestr(f"图片_{i+1}.jpg", ib.getvalue())
     buf.seek(0)
     return buf
 
 
 # ═══════════════════════════════════════════════════════
-#  侧边栏
+#  页面1：邀请码门禁
+# ═══════════════════════════════════════════════════════
+if not st.session_state.authed:
+    st.markdown("""
+    <div class="gate-box">
+        <div class="gate-title">📱 小红书内容 Agent</div>
+        <div class="gate-sub">内测版本 · 请输入邀请码进入</div>
+    </div>
+    """, unsafe_allow_html=True)
+
+    col_l, col_c, col_r = st.columns([1, 2, 1])
+    with col_c:
+        st.markdown("### 输入邀请码")
+        code_input = st.text_input(
+            "邀请码",
+            placeholder="如：TEST01",
+            label_visibility="collapsed",
+            max_chars=20,
+        )
+        if st.button("进入 →", type="primary", use_container_width=True):
+            if check_invite_code(code_input):
+                st.session_state.authed = True
+                st.session_state.invite_code = code_input.strip().upper()
+                st.rerun()
+            else:
+                st.error("邀请码无效，请联系 David 获取")
+
+        st.caption("没有邀请码？联系 David 申请测试资格")
+    st.stop()
+
+
+# ═══════════════════════════════════════════════════════
+#  侧边栏（已通过邀请码后显示）
 # ═══════════════════════════════════════════════════════
 with st.sidebar:
-    st.title("⚙️ 设置")
-
-    # 检测 Secrets 中是否已有配置
-    def _has_secret(name):
-        try:
-            return bool(st.secrets.get(name, ""))
-        except Exception:
-            return False
-
-    _has_ds = _has_secret("DEEPSEEK_API_KEY")
-    _has_gg = _has_secret("GOOGLE_API_KEY")
-
-    _ds_input = st.text_input(
-        "DeepSeek API Key",
-        value="",
-        type="password",
-        placeholder="已从Secrets读取 ✓" if _has_ds else "请输入DeepSeek API Key",
-        help="在 Streamlit Secrets 中配置 DEEPSEEK_API_KEY，或直接粘贴到此处",
-    )
-    deepseek_key = _resolve_key(_ds_input, "DEEPSEEK_API_KEY")
-
-    _gg_input = st.text_input(
-        "Google Gemini API Key",
-        value="",
-        type="password",
-        placeholder="已从Secrets读取 ✓" if _has_gg else "请输入Google API Key",
-        help="在 Google AI Studio 生成 → 粘贴到此处，或在 Streamlit Secrets 中配置 GOOGLE_API_KEY",
-    )
-    google_key = _resolve_key(_gg_input, "GOOGLE_API_KEY")
-
+    st.markdown(f"**欢迎测试！** `{st.session_state.invite_code}`")
     st.divider()
 
-    track = st.selectbox("🏃 赛道", ["上门私教", "产后恢复", "青少年体育（长高）"])
-    city = st.text_input("📍 城市", value="北京")
-
-    st.divider()
-
-    prompt_mode = st.selectbox(
-        "🎨 图片重绘模式",
-        list(_IMAGE_PROMPT_PRESETS.keys()),
-        index=0,
+    st.markdown("**📍 你的城市**")
+    st.session_state.city = st.text_input(
+        "城市",
+        value=st.session_state.city,
+        label_visibility="collapsed",
+        placeholder="输入城市名，如：上海",
     )
 
-    if prompt_mode == "自定义提示词":
-        image_prompt = st.text_area(
-            "自定义提示词",
-            value="",
-            height=100,
-            placeholder="描述你想要的图片编辑效果…",
-        )
-    else:
-        image_prompt = _IMAGE_PROMPT_PRESETS[prompt_mode]
-        with st.expander("查看提示词内容"):
-            st.caption(image_prompt)
-
     st.divider()
-    st.caption("Demo v2.0 | 技术支持：David")
+    st.caption("Demo v3.0 · 内测版\n\n遇到问题请截图反馈给 David")
+
+    if st.button("退出登录", use_container_width=True):
+        for k in list(st.session_state.keys()):
+            del st.session_state[k]
+        st.rerun()
 
 
 # ═══════════════════════════════════════════════════════
-#  主页面
+#  页面2：行业选择
 # ═══════════════════════════════════════════════════════
-
-st.title("📱 小红书内容智能处理工具")
-st.caption("粘贴分享文本 → 自动提取 → 改写文案 → 图片重绘 → 打包下载")
+st.title("📱 小红书内容 Agent")
+st.caption("粘贴竞品链接 → AI 改写文案 → 图片重绘去水印 → 一键打包下载")
 st.divider()
 
-# ─────────────────────────────────────────
-#  第一步：粘贴内容（一个框搞定）
-# ─────────────────────────────────────────
-st.markdown(
-    '<span class="step-num">1</span> <b>粘贴小红书笔记</b>',
-    unsafe_allow_html=True,
-)
+st.markdown("### 选择你的行业")
+st.caption("不同行业有专属的文案风格和改写策略")
 
-st.markdown(
-    "**操作方法：** 在小红书App中打开笔记 → 点击「分享」→「复制链接」→ 粘贴到下方输入框",
-)
+cols = st.columns(4)
+industry_keys = list(INDUSTRIES.keys())
+
+for i, ikey in enumerate(industry_keys):
+    info = INDUSTRIES[ikey]
+    with cols[i]:
+        selected = st.session_state.industry_id == ikey
+        border_color = "#ff2442" if selected else "#e5e7eb"
+        bg_color = "#fff5f6" if selected else "white"
+        check = " ✓" if selected else ""
+        st.markdown(
+            f"""
+            <div style="border:2px solid {border_color}; border-radius:12px;
+                        padding:18px 12px; text-align:center; background:{bg_color};
+                        min-height:120px;">
+                <div style="font-size:2rem;">{info['label'].split()[0]}</div>
+                <div style="font-weight:bold; margin-top:6px;">{info['label'].split(' ', 1)[1]}{check}</div>
+                <div style="font-size:0.75rem; color:#6b7280; margin-top:4px;">{info['desc']}</div>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
+        if st.button("选择", key=f"sel_{ikey}", use_container_width=True,
+                     type="primary" if selected else "secondary"):
+            st.session_state.industry_id = ikey
+            # 切换行业时重置内容
+            st.session_state.content_ready = False
+            st.session_state.rewrite_done = False
+            st.session_state.images_done = False
+            st.session_state.rewrite_result = ""
+            st.session_state.edited_images = []
+            st.rerun()
+
+if not st.session_state.industry_id:
+    st.info("👆 请先选择行业，再开始处理内容")
+    st.stop()
+
+industry = INDUSTRIES[st.session_state.industry_id]
+st.success(f"当前行业：**{industry['label']}** · 城市：**{st.session_state.city}**")
+st.divider()
+
+
+# ═══════════════════════════════════════════════════════
+#  Step 1：提取内容
+# ═══════════════════════════════════════════════════════
+st.markdown('<span class="step-num">1</span> **粘贴小红书笔记链接**', unsafe_allow_html=True)
+st.caption("在小红书 App 打开笔记 → 分享 → 复制链接 → 粘贴到下方")
 
 paste_input = st.text_area(
     "粘贴分享内容",
     height=80,
-    placeholder='直接粘贴，例如：北京火爆的上门体育到家🔥 http://xhslink.com/xxx 复制后打开【小红书】查看笔记!',
-    key="paste_box",
+    placeholder="直接粘贴，例如：宝藏健身房推荐🔥 http://xhslink.com/xxx 复制后打开小红书查看",
     label_visibility="collapsed",
 )
 
-col_extract, col_upload = st.columns([1, 2])
-with col_extract:
-    btn_extract = st.button("🚀 一键提取", type="primary", key="btn_extract", use_container_width=True)
-with col_upload:
+col_btn, col_up = st.columns([1, 2])
+with col_btn:
+    btn_extract = st.button("🚀 一键提取", type="primary", use_container_width=True)
+with col_up:
     extra_imgs = st.file_uploader(
-        "补充上传图片（可选，可多选）",
+        "补充上传图片（可选）",
         type=["jpg", "jpeg", "png", "webp"],
         accept_multiple_files=True,
-        key="extra_imgs",
     )
 
-# ── 提取逻辑 ──
 if btn_extract:
     if not paste_input.strip():
         st.warning("请先粘贴小红书分享内容")
     else:
-        progress = st.progress(0, text="开始提取…")
+        prog = st.progress(0, text="开始提取…")
 
-        def _progress(pct, msg):
-            progress.progress(pct, text=msg)
+        def _cb(pct, msg):
+            prog.progress(pct, text=msg)
 
-        title, text, img_urls, logs = try_extract_xhs(paste_input.strip(), _progress)
+        title, text, img_urls, logs = try_extract_xhs(paste_input.strip(), _cb)
+        prog.progress(0.7, text="下载图片中…")
 
-        progress.progress(0.7, text="下载图片中…")
-
-        # 下载图片
-        downloaded_imgs = []
+        downloaded = []
         for i, u in enumerate(img_urls or []):
-            progress.progress(
-                0.7 + 0.25 * (i / max(len(img_urls), 1)),
-                text=f"下载第 {i + 1}/{len(img_urls)} 张图片…",
-            )
+            prog.progress(0.7 + 0.25 * (i / max(len(img_urls), 1)),
+                          text=f"下载第 {i+1}/{len(img_urls)} 张…")
             im = download_image_url(u)
             if im:
-                downloaded_imgs.append(im)
+                downloaded.append(im)
 
-        # 加上用户额外上传的图片
         if extra_imgs:
             for f in extra_imgs:
                 try:
-                    downloaded_imgs.append(Image.open(f).convert("RGB"))
+                    downloaded.append(Image.open(f).convert("RGB"))
                 except Exception:
                     pass
 
-        progress.progress(1.0, text="提取完成！")
-
-        # 保存提取日志
+        prog.progress(1.0, text="提取完成！")
         st.session_state.extract_log = "\n".join(logs)
 
-        # 判断结果
-        has_title = bool(title)
-        has_text = bool(text)
-        has_imgs = len(downloaded_imgs) > 0
-
-        if has_title or has_text:
+        if title or text:
             st.session_state.note_title = title or ""
             st.session_state.note_text = text or ""
-            st.session_state.note_images = downloaded_imgs
+            st.session_state.note_images = downloaded
             st.session_state.content_ready = True
             st.session_state.rewrite_done = False
             st.session_state.images_done = False
             st.session_state.rewrite_result = ""
             st.session_state.edited_images = []
 
-            # 显示结果摘要
             parts = []
-            if has_title:
+            if title:
                 parts.append("标题 ✓")
-            if has_text:
+            if text:
                 parts.append(f"正文 ✓（{len(text)}字）")
-            if has_imgs:
-                parts.append(f"{len(downloaded_imgs)}张图片 ✓")
+            if downloaded:
+                parts.append(f"{len(downloaded)}张图片 ✓")
             elif img_urls:
-                parts.append(f"图片下载失败（{len(img_urls)}张）")
+                parts.append(f"图片下载失败（{len(img_urls)}张，可手动上传）")
+            st.success(f"提取成功！{' | '.join(parts)}")
 
-            st.success(f"提取成功！ {' | '.join(parts)}")
-
-            if not has_text and has_title:
+            if not text and title:
                 st.info(
-                    "💡 正文未提取到（小红书云端反爬限制），但标题已获取。\n\n"
-                    "**操作方法：** 在小红书App中打开该笔记 → 长按正文 → 全选 → 复制 → "
-                    "粘贴到下方「正文」框中 → 点击「更新内容」→ 继续改写"
+                    "💡 **正文未提取到**（小红书反爬限制）\n\n"
+                    "操作：小红书 App 打开该笔记 → 长按正文 → 全选复制 → 粘贴到下方「正文」框 → 点击「更新内容」"
                 )
-            if not has_imgs and has_title:
+            if not downloaded and title:
                 st.info(
-                    "💡 图片未提取到，可在下方「补充/替换图片」处手动上传原图。\n\n"
-                    "**操作方法：** 在小红书App中长按图片 → 保存到手机 → 传到电脑 → 上传"
+                    "💡 **图片未提取到**，可在下方手动上传原图\n\n"
+                    "操作：小红书 App 长按图片保存 → 传到电脑 → 上传"
                 )
-
             st.rerun()
         else:
-            st.error("提取失败")
+            st.error("提取失败，小红书可能已限制访问")
             st.info(
-                "💡 **解决方法：** 在小红书App中打开笔记，"
-                "长按选中正文文字 → 复制 → 粘贴到下方「补充正文」框中"
+                "💡 **手动补救**：在小红书 App 打开笔记 → 长按正文 → 复制 → "
+                "粘贴到下方「正文」框，然后继续改写"
             )
 
-# ── 提取日志（折叠显示） ──
 if st.session_state.extract_log:
-    with st.expander("查看提取过程详情", expanded=False):
+    with st.expander("查看提取详情", expanded=False):
         st.code(st.session_state.extract_log, language=None)
 
-# ─────────────────────────────────────────
-#  内容预览 & 补充编辑
-# ─────────────────────────────────────────
+# ── 内容预览 & 手动编辑 ──
 if st.session_state.content_ready:
-    with st.expander("📋 已提取的内容（可编辑补充）", expanded=True):
-        edit_title = st.text_input(
-            "标题",
-            value=st.session_state.note_title,
-            key="edit_title",
-        )
+    with st.expander("📋 已提取的内容（可手动补充编辑）", expanded=True):
+        edit_title = st.text_input("标题", value=st.session_state.note_title)
         edit_text = st.text_area(
             "正文",
             value=st.session_state.note_text,
             height=150,
-            key="edit_text",
-            placeholder="如果正文未提取到，从小红书App中复制正文粘贴到这里…",
+            placeholder="如果正文未提取到，从小红书 App 复制正文粘贴到这里…",
         )
-
-        # 补充上传图片
         add_imgs = st.file_uploader(
-            "补充/替换图片（可选，可多选）",
+            "补充/替换图片",
             type=["jpg", "jpeg", "png", "webp"],
             accept_multiple_files=True,
-            key="add_imgs",
+            key="add_imgs_edit",
         )
-
-        if st.button("💾 更新内容", key="btn_update"):
+        if st.button("💾 更新内容"):
             st.session_state.note_title = edit_title.strip()
             st.session_state.note_text = edit_text.strip()
             if add_imgs:
-                new_imgs = []
-                for f in add_imgs:
-                    try:
-                        new_imgs.append(Image.open(f).convert("RGB"))
-                    except Exception:
-                        pass
+                new_imgs = [Image.open(f).convert("RGB") for f in add_imgs]
                 if new_imgs:
                     st.session_state.note_images = new_imgs
             st.session_state.rewrite_done = False
@@ -755,42 +766,35 @@ if st.session_state.content_ready:
             st.success("内容已更新！")
             st.rerun()
 
-        # 显示已有图片
         if st.session_state.note_images:
-            cols = st.columns(min(len(st.session_state.note_images), 4))
+            img_cols = st.columns(min(len(st.session_state.note_images), 4))
             for i, img in enumerate(st.session_state.note_images):
-                with cols[i % 4]:
-                    st.image(img, caption=f"原图 {i + 1}", use_container_width=True)
+                with img_cols[i % 4]:
+                    st.image(img, caption=f"原图 {i+1}", use_container_width=True)
 
-    # ─────────────────────────────────────────
-    #  第二步：AI 文案改写
-    # ─────────────────────────────────────────
+
+# ═══════════════════════════════════════════════════════
+#  Step 2：AI 文案改写
+# ═══════════════════════════════════════════════════════
+if st.session_state.content_ready:
     st.divider()
     st.markdown(
-        '<span class="step-num">2</span> <b>AI 文案改写（DeepSeek）</b>',
+        f'<span class="step-num">2</span> **AI 文案改写** '
+        f'<span style="font-size:0.85rem; color:#6b7280;">（{industry["label"]} · {st.session_state.city}风格）</span>',
         unsafe_allow_html=True,
     )
 
-    col_btn, col_tag = st.columns([1, 3])
-    with col_btn:
-        do_rewrite = st.button("🚀 一键改写", type="primary", key="btn_rewrite")
-    with col_tag:
-        st.caption(f"赛道：{track}　|　城市：{city}")
-
-    if do_rewrite:
+    if st.button("✨ 一键改写文案", type="primary", key="btn_rewrite"):
         if not st.session_state.note_title and not st.session_state.note_text:
             st.error("标题和正文都为空，请先补充内容")
-        elif not deepseek_key:
-            st.error("请在左侧栏填入 DeepSeek API Key")
         else:
-            with st.spinner("DeepSeek 正在改写文案… ⏳"):
+            with st.spinner("DeepSeek 正在改写… ⏳"):
                 try:
                     result = rewrite_with_deepseek(
-                        deepseek_key,
                         st.session_state.note_title,
                         st.session_state.note_text,
-                        track,
-                        city,
+                        industry,
+                        st.session_state.city,
                     )
                     st.session_state.rewrite_result = result
                     st.session_state.rewrite_done = True
@@ -799,124 +803,169 @@ if st.session_state.content_ready:
                     st.error(f"改写失败：{e}")
 
     if st.session_state.rewrite_done:
-        col1, col2 = st.columns(2)
-        with col1:
-            st.markdown("**📄 原文**")
-            st.info(
-                f"**{st.session_state.note_title}**\n\n"
-                f"{st.session_state.note_text}"
-            )
-        with col2:
-            st.markdown("**✨ 改写后**")
+        c1, c2 = st.columns(2)
+        with c1:
+            st.markdown("**原文**")
+            st.info(f"**{st.session_state.note_title}**\n\n{st.session_state.note_text}")
+        with c2:
+            st.markdown("**改写后**")
             st.success(st.session_state.rewrite_result)
 
-    # ─────────────────────────────────────────
-    #  第三步：图片重绘
-    # ─────────────────────────────────────────
-    if st.session_state.rewrite_done and st.session_state.note_images:
-        st.divider()
-        st.markdown(
-            '<span class="step-num">3</span> <b>图片智能重绘（Google Gemini）</b>',
-            unsafe_allow_html=True,
-        )
 
-        with st.expander("当前重绘提示词", expanded=False):
-            st.code(image_prompt, language=None)
+# ═══════════════════════════════════════════════════════
+#  Step 3：图片重绘
+# ═══════════════════════════════════════════════════════
+if st.session_state.rewrite_done and st.session_state.note_images:
+    st.divider()
+    st.markdown('<span class="step-num">3</span> **图片重绘（去水印 · 去文字）**', unsafe_allow_html=True)
 
-        if st.button("🎨 一键重绘图片", type="primary", key="btn_img"):
-            if not google_key:
-                st.error("请在左侧栏填入 Google Gemini API Key")
-            else:
-                n = len(st.session_state.note_images)
-                progress = st.progress(0, text="准备重绘…")
-                edited = []
+    with st.expander("查看重绘提示词", expanded=False):
+        st.code(industry["image_prompt"], language=None)
 
-                for i, img in enumerate(st.session_state.note_images):
-                    progress.progress(
-                        i / n,
-                        text=f"正在重绘第 {i + 1}/{n} 张…",
-                    )
-                    result = edit_image_with_gemini(google_key, img, image_prompt)
-                    edited.append(result)
+    if st.button("🎨 一键重绘图片", type="primary", key="btn_img"):
+        n = len(st.session_state.note_images)
+        prog2 = st.progress(0, text="准备重绘…")
+        edited = []
+        errors = []
 
-                progress.progress(1.0, text="✅ 重绘完成！")
-                st.session_state.edited_images = edited
-                st.session_state.images_done = True
+        for i, img in enumerate(st.session_state.note_images):
+            prog2.progress(i / n, text=f"正在重绘第 {i+1}/{n} 张…")
+            result_img, err_msg = edit_image_with_gemini(img, industry["image_prompt"])
+            edited.append(result_img)
+            if err_msg:
+                errors.append(f"图片 {i+1}：{err_msg}")
+
+        prog2.progress(1.0, text="重绘完成！")
+        st.session_state.edited_images = edited
+        st.session_state.images_done = True
+
+        success_count = sum(1 for x in edited if x is not None)
+        if success_count == n:
+            st.success(f"全部 {n} 张图片重绘成功！")
+        elif success_count > 0:
+            st.warning(f"{success_count}/{n} 张成功，{n - success_count} 张失败")
+        else:
+            st.error("图片重绘全部失败，可跳过此步骤直接用原图下载")
+
+        if errors:
+            with st.expander("查看错误详情"):
+                for e in errors:
+                    st.caption(e)
+        st.rerun()
+
+    if st.session_state.images_done:
+        for i, (orig, ed) in enumerate(
+            zip(st.session_state.note_images, st.session_state.edited_images)
+        ):
+            c1, c2 = st.columns(2)
+            with c1:
+                st.image(orig, caption=f"原图 {i+1}", use_container_width=True)
+            with c2:
+                if ed:
+                    st.image(ed, caption=f"重绘后 {i+1}", use_container_width=True)
+                else:
+                    st.warning(f"图片 {i+1} 重绘失败")
+                    st.caption("可跳过，下载时使用原图")
+
+        # 重试按钮
+        if any(x is None for x in st.session_state.edited_images):
+            if st.button("🔄 重试失败的图片", key="btn_retry"):
+                prog3 = st.progress(0, text="重试中…")
+                for i, (img, ed) in enumerate(
+                    zip(st.session_state.note_images, st.session_state.edited_images)
+                ):
+                    if ed is None:
+                        prog3.progress(i / len(st.session_state.note_images),
+                                       text=f"重试第 {i+1} 张…")
+                        new_img, _ = edit_image_with_gemini(img, industry["image_prompt"])
+                        if new_img:
+                            st.session_state.edited_images[i] = new_img
+                prog3.progress(1.0, text="重试完成")
                 st.rerun()
 
-        if st.session_state.images_done:
-            for i, (orig, edited) in enumerate(
-                zip(st.session_state.note_images, st.session_state.edited_images)
-            ):
-                col1, col2 = st.columns(2)
-                with col1:
-                    st.image(orig, caption=f"原图 {i + 1}", use_container_width=True)
-                with col2:
-                    if edited:
-                        st.image(edited, caption=f"重绘后 {i + 1}", use_container_width=True)
-                    else:
-                        st.warning(f"图片 {i + 1} 重绘失败，可尝试调整提示词重试")
 
-    # ─────────────────────────────────────────
-    #  第四步：打包下载
-    # ─────────────────────────────────────────
-    if st.session_state.rewrite_done:
-        st.divider()
-        st.markdown(
-            '<span class="step-num">4</span> <b>打包下载</b>',
-            unsafe_allow_html=True,
+# ═══════════════════════════════════════════════════════
+#  Step 4：打包下载
+# ═══════════════════════════════════════════════════════
+if st.session_state.rewrite_done:
+    st.divider()
+    st.markdown('<span class="step-num">4</span> **打包下载**', unsafe_allow_html=True)
+
+    ts = datetime.now().strftime("%Y%m%d_%H%M%S")
+    c1, c2, c3 = st.columns(3)
+
+    with c1:
+        st.download_button(
+            "📝 下载文案（TXT）",
+            data=st.session_state.rewrite_result.encode("utf-8"),
+            file_name=f"改写文案_{ts}.txt",
+            mime="text/plain",
+            use_container_width=True,
         )
 
-        ts = datetime.now().strftime("%Y%m%d_%H%M%S")
-
-        col1, col2, col3 = st.columns(3)
-
-        with col1:
-            st.download_button(
-                "📝 下载改写文案",
-                data=st.session_state.rewrite_result.encode("utf-8"),
-                file_name=f"改写文案_{ts}.txt",
-                mime="text/plain",
-            )
-
-        with col2:
-            if st.session_state.images_done:
-                good_imgs = [
-                    img
-                    for img in st.session_state.edited_images
-                    if img is not None
-                ]
-                if good_imgs:
-                    zip_data = make_zip(
-                        st.session_state.rewrite_result[:60],
-                        st.session_state.rewrite_result,
-                        good_imgs,
-                    )
-                    st.download_button(
-                        "📦 下载全部（ZIP）",
-                        data=zip_data,
-                        file_name=f"小红书内容_{ts}.zip",
-                        mime="application/zip",
-                    )
-
-        with col3:
-            if st.session_state.note_images:
-                zip_orig = make_zip(
+    with c2:
+        if st.session_state.images_done:
+            good_imgs = [x for x in st.session_state.edited_images if x]
+            if good_imgs:
+                zip_data = make_zip(
                     st.session_state.rewrite_result[:60],
                     st.session_state.rewrite_result,
-                    st.session_state.note_images,
+                    good_imgs,
                 )
                 st.download_button(
-                    "📦 文案+原图（ZIP）",
-                    data=zip_orig,
-                    file_name=f"文案加原图_{ts}.zip",
+                    "📦 文案+重绘图（ZIP）",
+                    data=zip_data,
+                    file_name=f"小红书内容_{ts}.zip",
                     mime="application/zip",
+                    use_container_width=True,
                 )
 
-# ─────────────────────────────────────────
-#  页脚
-# ─────────────────────────────────────────
+    with c3:
+        if st.session_state.note_images:
+            zip_orig = make_zip(
+                st.session_state.rewrite_result[:60],
+                st.session_state.rewrite_result,
+                st.session_state.note_images,
+            )
+            st.download_button(
+                "📦 文案+原图（ZIP）",
+                data=zip_orig,
+                file_name=f"文案加原图_{ts}.zip",
+                mime="application/zip",
+                use_container_width=True,
+            )
+
+    st.caption("下载后手动发布到小红书即可")
+
+
+# ═══════════════════════════════════════════════════════
+#  反馈区
+# ═══════════════════════════════════════════════════════
+if st.session_state.rewrite_done and not st.session_state.feedback_submitted:
+    st.divider()
+    st.markdown("### 💬 使用反馈")
+    st.caption("你的反馈直接影响产品下一版迭代方向")
+
+    with st.form("feedback_form"):
+        rating = st.select_slider(
+            "整体体验评分",
+            options=["😣 很差", "😕 一般", "😐 还行", "😊 不错", "🤩 很棒"],
+            value="😊 不错",
+        )
+        feedback_text = st.text_area(
+            "具体反馈（可选）",
+            placeholder="哪个功能最有用？哪里用起来最麻烦？最希望增加什么功能？",
+            height=100,
+        )
+        submitted = st.form_submit_button("提交反馈", type="primary")
+        if submitted:
+            st.session_state.feedback_submitted = True
+            st.rerun()
+
+elif st.session_state.feedback_submitted:
+    st.divider()
+    st.success("感谢反馈！David 会认真查看每一条，下一版见 👋")
+
+# ─── 页脚 ───
 st.divider()
-st.caption(
-    "💡 使用流程：小红书App → 分享 → 复制链接 → 粘贴到上方 → 一键提取"
-)
+st.caption("📱 小红书内容 Agent · Demo v3.0 · 内测版")
