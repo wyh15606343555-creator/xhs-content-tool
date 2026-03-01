@@ -1,6 +1,6 @@
 """
 小红书通用内容 Agent — Demo v5.0
-邀请码测试版 | 10大行业全部支持双模式 | 免费+Pro双档AI配图
+邀请码测试版 | 12大行业全部支持双模式 | 免费+Pro双档AI配图
 """
 
 import streamlit as st
@@ -351,7 +351,7 @@ def _has_pro_quota(code: str) -> bool:
 
 
 # ═══════════════════════════════════════════════════════
-#  行业模板库（10 个行业，每个均支持竞品参考 + 原创生成双模式）
+#  行业模板库（12 个行业，每个均支持竞品参考 + 原创生成双模式）
 # ═══════════════════════════════════════════════════════
 INDUSTRIES = {
 
@@ -852,6 +852,111 @@ INDUSTRIES = {
             "Clean up the background for a professional, studio-quality look. "
             "Remove any text overlays, price tags, watermarks, or logos completely. "
             "The result should look like a high-end jewelry catalog photo that conveys luxury and quality."
+        ),
+    },
+
+    "pet": {
+        "label": "🐾 宠物服务",
+        "desc": "宠物店 / 宠物医院 / 美容寄养 / 用品",
+
+        # ── 竞品参考模式 (Mode A) ──
+        "system_prompt": (
+            "你是专业的宠物行业小红书文案改写专家。\n\n"
+            "改写规则：\n"
+            "1. 保留核心卖点（服务项目、宠物品种、价格、环境/设备）\n"
+            "2. 完全更换表达方式，改写率 > 70%\n"
+            "3. 风格：温馨治愈、有爱，口语化，适当使用 emoji\n"
+            "4. 多用「毛孩子」「铲屎官必看」「宝宝」「呵护」「放心托付」等情感词\n"
+            "5. 融入宠物主人的情感共鸣场景\n"
+            "6. 结尾保留并优化话题标签（5-8个）\n\n"
+            "请严格按以下格式输出：\n"
+            "【标题】改写后的标题\n"
+            "【正文】改写后的正文"
+        ),
+
+        # ── 原创生成模式 (Mode B) ──
+        "profile_fields": [
+            {"key": "store_name",    "label": "店铺/机构名称", "placeholder": "如：毛茸茸宠物生活馆"},
+            {"key": "main_service",  "label": "主营服务",      "placeholder": "如：宠物美容 / 寄养托管 / 宠物医疗"},
+            {"key": "pet_type",      "label": "服务宠物种类",  "placeholder": "如：猫咪/犬类/兔子/小动物均可"},
+            {"key": "price_range",   "label": "价格区间",      "placeholder": "如：基础洗澡美容68元起"},
+        ],
+        "brief_placeholder": "如：今天给一只泰迪做了全套SPA造型，主人看到后超感动，想展示效果吸引新客",
+        "create_system_prompt": (
+            "你是专业的宠物行业小红书文案创作专家。\n\n"
+            "根据店铺信息和今日主题，创作一篇原创小红书种草笔记。\n\n"
+            "创作要求：\n"
+            "1. 风格：温馨治愈、有爱，口语化，多用 emoji\n"
+            "2. 结构：萌宠钩子标题 + 铲屎官痛点共鸣 + 服务/产品介绍 + 效果/体验描述 + 预约/到店引导\n"
+            "3. 多用「毛孩子」「铲屎官必看」「放心托付」「宝宝超乖」等情感高频词\n"
+            "4. 可融入宠物趣事或主人情感共鸣\n"
+            "5. 结尾加话题标签（5-8个）\n"
+            "6. 字数：正文300-500字\n\n"
+            "请严格按以下格式输出：\n"
+            "【标题】原创标题（含emoji，突出萌感或安心感）\n"
+            "【正文】原创正文"
+        ),
+
+        # ── 图片处理提示词 ──
+        "image_prompt": (
+            "Enhance this pet/animal photo for social media: "
+            "improve brightness and warmth to make the pet look adorable and healthy. "
+            "Sharpen fur texture and eye clarity to bring out the cuteness. "
+            "Improve background cleanliness without changing the setting. "
+            "Remove any text overlays, watermarks, price tags, or logos completely. "
+            "The result should look like a heartwarming, high-quality pet photo."
+        ),
+    },
+
+    "travel": {
+        "label": "✈️ 旅游出行",
+        "desc": "景区 / 旅行社 / 定制游 / 周边游攻略",
+
+        # ── 竞品参考模式 (Mode A) ──
+        "system_prompt": (
+            "你是专业的旅游出行小红书文案改写专家。\n\n"
+            "改写规则：\n"
+            "1. 保留核心信息（目的地、行程亮点、价格、交通/住宿建议）\n"
+            "2. 完全更换表达方式，改写率 > 70%\n"
+            "3. 风格：有画面感、有向往感，口语化，适当使用 emoji\n"
+            "4. 多用「宝藏目的地」「私藏攻略」「错峰出行」「治愈系」「打卡胜地」等种草词\n"
+            "5. 融入出发城市/路线的本地感，增强实用性\n"
+            "6. 结尾保留并优化话题标签（5-8个）\n\n"
+            "请严格按以下格式输出：\n"
+            "【标题】改写后的标题\n"
+            "【正文】改写后的正文"
+        ),
+
+        # ── 原创生成模式 (Mode B) ──
+        "profile_fields": [
+            {"key": "agency_name",   "label": "旅行社/品牌名", "placeholder": "如：悦途定制旅行"},
+            {"key": "destination",   "label": "目的地/线路",   "placeholder": "如：云南大理丽江5日游 / 周边亲子游"},
+            {"key": "price_range",   "label": "价格/人均",     "placeholder": "如：成人1980元/人 / 亲子家庭套餐3800元"},
+            {"key": "highlights",    "label": "行程亮点",      "placeholder": "如：含接机/特色民宿/古城游览/私家团"},
+        ],
+        "brief_placeholder": "如：上周带了一个家庭客户去大理玩，天气超好，苍山洱海都拍到了，客户超满意，想做成案例展示",
+        "create_system_prompt": (
+            "你是专业的旅游出行小红书文案创作专家。\n\n"
+            "根据旅行社/线路信息和今日主题，创作一篇原创小红书种草笔记。\n\n"
+            "创作要求：\n"
+            "1. 风格：有画面感、有向往感，口语化，适当使用 emoji\n"
+            "2. 结构：景色/体验钩子标题 + 出行场景代入 + 行程/亮点介绍 + 费用/服务说明 + 咨询/报名引导\n"
+            "3. 多用「宝藏目的地」「私藏攻略」「治愈系」「打卡胜地」「不踩坑」等高流量词\n"
+            "4. 可融入真实出行体验感受和细节描写\n"
+            "5. 结尾加话题标签（5-8个）\n"
+            "6. 字数：正文300-500字\n\n"
+            "请严格按以下格式输出：\n"
+            "【标题】原创标题（含emoji，体现向往感或实用感）\n"
+            "【正文】原创正文"
+        ),
+
+        # ── 图片处理提示词 ──
+        "image_prompt": (
+            "Enhance this travel/landscape/tourism photo for social media: "
+            "boost colors, saturation, and contrast to make scenery look vivid and breathtaking. "
+            "Improve sky clarity, enhance natural colors of mountains, water, and greenery. "
+            "Remove any text overlays, watermarks, tour agency logos, or price information completely. "
+            "The result should look like a stunning travel photography shot that inspires viewers to visit."
         ),
     },
 }
@@ -1481,7 +1586,7 @@ with st.sidebar:
 
 
 # ═══════════════════════════════════════════════════════
-#  页面2：行业选择（10个，2行×4列 + 1行×2列）
+#  页面2：行业选择（12个，3行×4列）
 # ═══════════════════════════════════════════════════════
 st.markdown(
     "<h1 style='margin-bottom:0; font-size:2rem; font-weight:900; "
@@ -2293,4 +2398,4 @@ elif st.session_state.feedback_submitted:
 
 # ─── 页脚 ───
 st.divider()
-st.caption("📱 小红书内容 Agent · Demo v5.0 · 10大行业全双模式 · 免费+Pro双档AI配图")
+st.caption("📱 小红书内容 Agent · Demo v5.0 · 12大行业全双模式 · 免费+Pro双档AI配图")
