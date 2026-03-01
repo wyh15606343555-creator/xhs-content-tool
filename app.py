@@ -1,6 +1,6 @@
 """
 小红书通用内容 Agent — Demo v5.0
-邀请码测试版 | 8大行业全部支持双模式 | 免费+Pro双档AI配图
+邀请码测试版 | 10大行业全部支持双模式 | 免费+Pro双档AI配图
 """
 
 import streamlit as st
@@ -351,7 +351,7 @@ def _has_pro_quota(code: str) -> bool:
 
 
 # ═══════════════════════════════════════════════════════
-#  行业模板库（8 个行业，每个均支持竞品参考 + 原创生成双模式）
+#  行业模板库（10 个行业，每个均支持竞品参考 + 原创生成双模式）
 # ═══════════════════════════════════════════════════════
 INDUSTRIES = {
 
@@ -746,6 +746,112 @@ INDUSTRIES = {
             "Enhance skin tones naturally. "
             "Remove any watermarks, studio logos, or text overlays completely. "
             "The result should look like a professionally edited portrait photo."
+        ),
+    },
+
+    "hotel": {
+        "label": "🏨 民宿&酒店",
+        "desc": "精品民宿 / 特色酒店 / 亲子酒店 / 度假村",
+
+        # ── 竞品参考模式 (Mode A) ──
+        "system_prompt": (
+            "你是专业的民宿/酒店小红书文案改写专家。\n\n"
+            "改写规则：\n"
+            "1. 保留核心卖点（地理位置、环境氛围、特色房型、配套设施、价格）\n"
+            "2. 完全更换表达方式，改写率 > 70%\n"
+            "3. 风格：有情调、有故事感，口语化，适当使用 emoji\n"
+            "4. 多用「氛围感」「治愈系」「宝藏住所」「出片率高」「私藏地」等种草词\n"
+            "5. 融入城市/地区旅游场景，增加在地属性\n"
+            "6. 结尾保留并优化话题标签（5-8个）\n\n"
+            "请严格按以下格式输出：\n"
+            "【标题】改写后的标题\n"
+            "【正文】改写后的正文"
+        ),
+
+        # ── 原创生成模式 (Mode B) ──
+        "profile_fields": [
+            {"key": "hotel_name",   "label": "民宿/酒店名称", "placeholder": "如：山间云舍民宿"},
+            {"key": "hotel_type",   "label": "类型/风格",     "placeholder": "如：山景民宿 / 海景精品酒店 / 亲子主题"},
+            {"key": "price_range",  "label": "每晚价格",      "placeholder": "如：大床房每晚388元起"},
+            {"key": "location",     "label": "地理位置",      "placeholder": "如：峨眉山脚下 / 大理古城附近"},
+        ],
+        "brief_placeholder": "如：周末入住了一对来度蜜月的客人，他们特别喜欢山景房，拍了很多照片，想展示环境吸引更多预定",
+        "create_system_prompt": (
+            "你是专业的民宿/酒店小红书文案创作专家。\n\n"
+            "根据民宿/酒店信息和今日主题，创作一篇原创小红书种草笔记。\n\n"
+            "创作要求：\n"
+            "1. 风格：有情调、有故事感，口语化，适当使用 emoji\n"
+            "2. 结构：场景钩子标题 + 初到感受/打卡亮点 + 房间/设施描述 + 周边配套 + 预订引导\n"
+            "3. 多用「氛围感」「治愈」「宝藏住所」「出片率高」「打卡地」等高流量种草词\n"
+            "4. 可描述入住体验、早餐、景色、周边游玩等细节\n"
+            "5. 结尾加话题标签（5-8个）\n"
+            "6. 字数：正文300-500字\n\n"
+            "请严格按以下格式输出：\n"
+            "【标题】原创标题（含emoji，体现氛围感或地标感）\n"
+            "【正文】原创正文"
+        ),
+
+        # ── 图片处理提示词 ──
+        "image_prompt": (
+            "Enhance this hotel/B&B/accommodation photo for social media: "
+            "improve lighting, warmth, and atmosphere to make the space look inviting and cozy. "
+            "Enhance natural light, make colors richer, and improve clarity of architectural details. "
+            "Remove any text overlays, watermarks, price tags, or logos completely. "
+            "The result should look like a professional interior or landscape photography shot "
+            "that makes viewers want to book a stay."
+        ),
+    },
+
+    "jewelry": {
+        "label": "💍 珠宝黄金",
+        "desc": "黄金 / 翡翠 / 钻石 / 银饰 / 珠宝定制",
+
+        # ── 竞品参考模式 (Mode A) ──
+        "system_prompt": (
+            "你是专业的珠宝黄金小红书文案改写专家。\n\n"
+            "改写规则：\n"
+            "1. 保留核心卖点（材质工艺、设计亮点、价格/克价、品牌/店铺信息）\n"
+            "2. 完全更换表达方式，改写率 > 70%\n"
+            "3. 风格：精致优雅有品位感，口语化，适当使用 emoji\n"
+            "4. 多用「质感」「有重量感」「送礼首选」「传家款」「保值」「每日佩戴」等种草词\n"
+            "5. 融入节日/送礼/纪念日等消费场景\n"
+            "6. 结尾保留并优化话题标签（5-8个）\n\n"
+            "请严格按以下格式输出：\n"
+            "【标题】改写后的标题\n"
+            "【正文】改写后的正文"
+        ),
+
+        # ── 原创生成模式 (Mode B) ──
+        "profile_fields": [
+            {"key": "store_name",    "label": "品牌/店铺名", "placeholder": "如：福满堂黄金珠宝"},
+            {"key": "main_product",  "label": "主营品类",    "placeholder": "如：黄金饰品 / 翡翠玉石 / 钻石定制"},
+            {"key": "price_range",   "label": "价格/克价",   "placeholder": "如：黄金今日克价640元 / 钻石戒指5000元起"},
+            {"key": "highlights",    "label": "品牌/工艺亮点", "placeholder": "如：国家认证 / 手工镶嵌 / 支持以旧换新"},
+        ],
+        "brief_placeholder": "如：新到了一批足金999蝴蝶结项链，轻奢感很强，今天主推，适合送女朋友，想做种草笔记",
+        "create_system_prompt": (
+            "你是专业的珠宝黄金小红书文案创作专家。\n\n"
+            "根据店铺信息和今日主题，创作一篇原创小红书种草笔记。\n\n"
+            "创作要求：\n"
+            "1. 风格：精致有品位感，口语化，适当使用 emoji\n"
+            "2. 结构：视觉吸引标题 + 材质/工艺介绍 + 佩戴效果/上身感 + 送礼/纪念日场景 + 购买引导\n"
+            "3. 多用「质感」「有重量感」「保值」「送礼首选」「轻奢风」等高转化词\n"
+            "4. 可结合节日、纪念日、自我犒赏等消费动机\n"
+            "5. 结尾加话题标签（5-8个）\n"
+            "6. 字数：正文300-500字\n\n"
+            "请严格按以下格式输出：\n"
+            "【标题】原创标题（含emoji，体现品质感或礼赠感）\n"
+            "【正文】原创正文"
+        ),
+
+        # ── 图片处理提示词 ──
+        "image_prompt": (
+            "Enhance this jewelry/gold/gemstone product photo for social media: "
+            "improve lighting to make the metal shine brilliantly and gemstones sparkle vividly. "
+            "Enhance color saturation of gold tones, gem colors, and metallic luster. "
+            "Clean up the background for a professional, studio-quality look. "
+            "Remove any text overlays, price tags, watermarks, or logos completely. "
+            "The result should look like a high-end jewelry catalog photo that conveys luxury and quality."
         ),
     },
 }
@@ -1375,7 +1481,7 @@ with st.sidebar:
 
 
 # ═══════════════════════════════════════════════════════
-#  页面2：行业选择（8个，2行×4列）
+#  页面2：行业选择（10个，2行×4列 + 1行×2列）
 # ═══════════════════════════════════════════════════════
 st.markdown(
     "<h1 style='margin-bottom:0; font-size:2rem; font-weight:900; "
@@ -2187,4 +2293,4 @@ elif st.session_state.feedback_submitted:
 
 # ─── 页脚 ───
 st.divider()
-st.caption("📱 小红书内容 Agent · Demo v5.0 · 8大行业全双模式 · 免费+Pro双档AI配图")
+st.caption("📱 小红书内容 Agent · Demo v5.0 · 10大行业全双模式 · 免费+Pro双档AI配图")
