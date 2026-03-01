@@ -1,6 +1,6 @@
 """
-小红书通用内容 Agent — Demo v4.0
-邀请码测试版 | 8大行业 | 双模式（竞品参考 / 原创生成）
+小红书通用内容 Agent — Demo v5.0
+邀请码测试版 | 8大行业全部支持双模式 | 免费+Pro双档AI配图
 """
 
 import streamlit as st
@@ -8,85 +8,110 @@ import requests
 import json
 import re
 import io
-import zipfile
 import time
 import random
+import zipfile
+import tempfile
+from pathlib import Path
 from datetime import datetime
 from PIL import Image
 
-# ═══════════════════════════════════════════════════════
-#  页面配置
-# ═══════════════════════════════════════════════════════
 st.set_page_config(
-    page_title="小红书内容 Agent · 测试版",
+    page_title="小红书内容Agent",
     page_icon="📱",
-    layout="wide",
+    layout="centered",
     initial_sidebar_state="expanded",
 )
 
 st.markdown("""
 <style>
-.block-container { padding-top: 1.5rem; }
-
-div.stButton > button[kind="primary"] {
-    background-color: #ff2442;
-    border: none;
+.gate-box {
+    text-align: center; padding: 3rem 1rem 2rem;
 }
-div.stButton > button[kind="primary"]:hover {
-    background-color: #e6203c;
-    border: none;
+.gate-title {
+    font-size: 2rem; font-weight: bold; margin-bottom: 0.5rem;
 }
-
+.gate-sub {
+    color: #6b7280; font-size: 0.95rem;
+}
 .step-num {
     display: inline-block;
-    background: #ff2442;
-    color: white;
-    width: 28px; height: 28px;
-    border-radius: 50%;
-    text-align: center;
-    line-height: 28px;
-    font-weight: bold;
-    font-size: 14px;
+    background: #ff2442; color: white;
+    border-radius: 50%; width: 26px; height: 26px;
+    text-align: center; line-height: 26px;
+    font-size: 0.85rem; font-weight: bold;
     margin-right: 6px;
 }
-
-.gate-box {
-    max-width: 400px;
-    margin: 80px auto;
-    text-align: center;
+/* 文件上传器汉化 */
+[data-testid="stFileUploaderDropzoneInstructions"] > div > span {
+    font-size: 0 !important;
+    line-height: 0;
 }
-.gate-title { font-size: 2rem; font-weight: bold; margin-bottom: 8px; }
-.gate-sub { color: #6b7280; margin-bottom: 32px; }
-
-.mode-a {
-    display: inline-block;
-    background: #eff6ff; color: #1d4ed8;
-    border-radius: 4px; padding: 2px 8px;
-    font-size: 0.68rem; font-weight: bold;
+[data-testid="stFileUploaderDropzoneInstructions"] > div > span::after {
+    content: "拖拽图片到此处";
+    font-size: 0.875rem;
+    line-height: 1.4;
 }
-.mode-b {
-    display: inline-block;
-    background: #f0fdf4; color: #15803d;
-    border-radius: 4px; padding: 2px 8px;
-    font-size: 0.68rem; font-weight: bold;
+[data-testid="stFileUploaderDropzoneInstructions"] small {
+    font-size: 0 !important;
+}
+[data-testid="stFileUploaderDropzoneInstructions"] small::after {
+    content: "支持 JPG / JPEG / PNG / WEBP，单文件最大 20MB";
+    font-size: 0.75rem;
+    color: #6b7280;
+}
+[data-testid="stFileUploaderDropzone"] button span {
+    font-size: 0 !important;
+}
+[data-testid="stFileUploaderDropzone"] button span::after {
+    content: "选择文件";
+    font-size: 0.875rem;
 }
 </style>
 """, unsafe_allow_html=True)
 
 
 # ═══════════════════════════════════════════════════════
-#  行业模板库
-#  mode="rewrite" → 竞品参考模式（A类：服务型，内容/图片可参考）
-#  mode="create"  → 原创生成模式（B类：实体店型，必须用自己素材）
+#  Pro 配额追踪（基于临时目录，同一 Streamlit 实例内跨 session 持久）
+# ═══════════════════════════════════════════════════════
+_USAGE_DIR = Path(tempfile.gettempdir()) / "xhs_agent_v5_usage"
+_PRO_GEN_LIMIT = 50
+
+
+def _get_pro_used(code: str) -> int:
+    try:
+        _USAGE_DIR.mkdir(exist_ok=True)
+        f = _USAGE_DIR / f"{code.upper()}.json"
+        return json.loads(f.read_text()).get("pro_gen", 0) if f.exists() else 0
+    except Exception:
+        return 0
+
+
+def _inc_pro_used(code: str) -> int:
+    try:
+        _USAGE_DIR.mkdir(exist_ok=True)
+        f = _USAGE_DIR / f"{code.upper()}.json"
+        new_val = _get_pro_used(code) + 1
+        f.write_text(json.dumps({"pro_gen": new_val}))
+        return new_val
+    except Exception:
+        return 0
+
+
+def _has_pro_quota(code: str) -> bool:
+    return _get_pro_used(code) < _PRO_GEN_LIMIT
+
+
+# ═══════════════════════════════════════════════════════
+#  行业模板库（8 个行业，每个均支持竞品参考 + 原创生成双模式）
 # ═══════════════════════════════════════════════════════
 INDUSTRIES = {
-
-    # ──────── A类：竞品参考模式 ────────
 
     "fitness": {
         "label": "💪 健身私教",
         "desc": "上门私教 / 减脂增肌 / 产后恢复",
-        "mode": "rewrite",
+
+        # ── 竞品参考模式 (Mode A) ──
         "system_prompt": (
             "你是专业的健身私教小红书文案改写专家。\n\n"
             "改写规则：\n"
@@ -100,6 +125,31 @@ INDUSTRIES = {
             "【标题】改写后的标题\n"
             "【正文】改写后的正文"
         ),
+
+        # ── 原创生成模式 (Mode B) ──
+        "profile_fields": [
+            {"key": "studio_name",  "label": "工作室/品牌名", "placeholder": "如：FitPro私教中心"},
+            {"key": "service_type", "label": "主营项目",      "placeholder": "如：上门私教 / 减脂增肌 / 产后恢复"},
+            {"key": "coach_cred",   "label": "教练资质",      "placeholder": "如：ACE认证 / 5年经验 / 体育院校毕业"},
+            {"key": "price_range",  "label": "课程价格",      "placeholder": "如：单次300元 / 10次课2800元"},
+        ],
+        "brief_placeholder": "如：学员小李3个月减脂18斤，腰围小了两圈，今天拍了对比照，想做成功案例展示",
+        "create_system_prompt": (
+            "你是专业的健身私教小红书文案创作专家。\n\n"
+            "根据教练/工作室信息和今日主题，创作一篇原创小红书笔记。\n\n"
+            "创作要求：\n"
+            "1. 风格：专业权威+真实亲切，口语化，适当使用 emoji\n"
+            "2. 结构：效果钩子标题 + 痛点共鸣 + 课程/教练介绍 + 成功案例/数据 + 预约引导\n"
+            "3. 多用「效果翻倍」「专属方案」「上门服务」「真实蜕变」等高转化词\n"
+            "4. 可加入学员真实反馈或前后数据对比\n"
+            "5. 结尾加话题标签（5-8个）\n"
+            "6. 字数：正文300-500字\n\n"
+            "请严格按以下格式输出：\n"
+            "【标题】原创标题（含emoji，突出效果）\n"
+            "【正文】原创正文"
+        ),
+
+        # ── 图片处理提示词 ──
         "image_prompt": (
             "Remove ALL text, titles, captions, watermarks, logos, and any overlaid "
             "text or graphics from this fitness/workout image completely. "
@@ -112,7 +162,7 @@ INDUSTRIES = {
     "beauty": {
         "label": "💄 美容美发",
         "desc": "护肤 / 美甲 / 发型设计 / 美容院",
-        "mode": "rewrite",
+
         "system_prompt": (
             "你是专业的美容美发小红书文案改写专家。\n\n"
             "改写规则：\n"
@@ -126,6 +176,29 @@ INDUSTRIES = {
             "【标题】改写后的标题\n"
             "【正文】改写后的正文"
         ),
+
+        "profile_fields": [
+            {"key": "store_name",     "label": "店铺/工作室名", "placeholder": "如：颜研美容工作室"},
+            {"key": "main_service",   "label": "主营项目",      "placeholder": "如：皮肤管理 / 美甲 / 睫毛 / 发型设计"},
+            {"key": "tech_highlight", "label": "技术亮点",      "placeholder": "如：韩国进口仪器 / 10年技师 / 进口材料"},
+            {"key": "price_range",    "label": "价格区间",      "placeholder": "如：皮肤管理基础护理188元起"},
+        ],
+        "brief_placeholder": "如：最近做了一个学员的皮肤管理，毛孔明显收缩，素颜都亮了很多，想展示效果吸引新客",
+        "create_system_prompt": (
+            "你是专业的美容美发小红书文案创作专家。\n\n"
+            "根据店铺信息和今日主题，创作一篇原创小红书笔记。\n\n"
+            "创作要求：\n"
+            "1. 风格：精致时尚、有种草感，口语化，多用 emoji\n"
+            "2. 结构：变美钩子标题 + 皮肤/发型痛点 + 项目/技术介绍 + 效果描述 + 预约引导\n"
+            "3. 多用「蜕变」「显白」「焕然一新」「专业护理」等种草词\n"
+            "4. 可加入 before/after 效果对比描述\n"
+            "5. 结尾加话题标签（5-8个）\n"
+            "6. 字数：正文300-500字\n\n"
+            "请严格按以下格式输出：\n"
+            "【标题】原创标题（含emoji，体现变美感）\n"
+            "【正文】原创正文"
+        ),
+
         "image_prompt": (
             "Remove ALL text, watermarks, logos, price information, and overlaid graphics "
             "from this beauty/hair/cosmetic image completely. "
@@ -138,7 +211,7 @@ INDUSTRIES = {
     "education": {
         "label": "📚 教育培训",
         "desc": "技能培训 / 考证备考 / 儿童教育",
-        "mode": "rewrite",
+
         "system_prompt": (
             "你是专业的教育培训小红书文案改写专家。\n\n"
             "改写规则：\n"
@@ -152,6 +225,29 @@ INDUSTRIES = {
             "【标题】改写后的标题\n"
             "【正文】改写后的正文"
         ),
+
+        "profile_fields": [
+            {"key": "institution",  "label": "机构名称",    "placeholder": "如：启航职业培训中心"},
+            {"key": "main_course",  "label": "主营课程",    "placeholder": "如：健身教练证 / 营养师证 / 育婴师证"},
+            {"key": "pass_rate",    "label": "通过率/成果", "placeholder": "如：一次性通过率95% / 已培训2000+学员"},
+            {"key": "price_range",  "label": "课程价格",    "placeholder": "如：周末班3980元 / 全程班5800元"},
+        ],
+        "brief_placeholder": "如：本月又有8名学员拿到了NSCA健身教练认证，想做成功案例展示，吸引更多学员报名",
+        "create_system_prompt": (
+            "你是专业的教育培训小红书文案创作专家。\n\n"
+            "根据机构信息和今日主题，创作一篇原创小红书笔记。\n\n"
+            "创作要求：\n"
+            "1. 风格：专业可信、激励感强，适当使用 emoji\n"
+            "2. 结构：成功钩子标题 + 学员痛点共鸣 + 课程/机构介绍 + 学员成果/数据 + 报名引导\n"
+            "3. 多用「学会」「提升」「改变」「拿证」「成功上岸」等激励词\n"
+            "4. 加入具体学员成功案例和数据\n"
+            "5. 结尾加话题标签（5-8个）\n"
+            "6. 字数：正文300-500字\n\n"
+            "请严格按以下格式输出：\n"
+            "【标题】原创标题（含emoji，体现成功感）\n"
+            "【正文】原创正文"
+        ),
+
         "image_prompt": (
             "Remove ALL text, watermarks, logos, and overlaid graphics "
             "from this education/training image completely. "
@@ -161,12 +257,24 @@ INDUSTRIES = {
         ),
     },
 
-    # ──────── B类：原创生成模式 ────────
-
     "food": {
         "label": "🍜 餐饮美食",
         "desc": "餐厅 / 咖啡馆 / 烘焙甜品 / 探店",
-        "mode": "create",
+
+        "system_prompt": (
+            "你是专业的餐饮探店小红书文案改写专家。\n\n"
+            "改写规则：\n"
+            "1. 保留核心卖点（招牌菜、环境特色、价格、地址区域）\n"
+            "2. 完全更换表达方式，改写率 > 70%\n"
+            "3. 风格：有食欲感、温馨治愈，口语化，适当使用 emoji\n"
+            "4. 融入当地商圈、地标元素，增加本地属性\n"
+            "5. 多用「宝藏小店」「必点」「隐藏菜单」「氛围感」「性价比」等高流量词\n"
+            "6. 结尾保留并优化话题标签（5-8个）\n\n"
+            "请严格按以下格式输出：\n"
+            "【标题】改写后的标题\n"
+            "【正文】改写后的正文"
+        ),
+
         "profile_fields": [
             {"key": "store_name",  "label": "店名",       "placeholder": "如：猫窝咖啡"},
             {"key": "store_style", "label": "风格/特色",  "placeholder": "如：日系复古 / 宠物友好 / 手冲精品"},
@@ -187,6 +295,7 @@ INDUSTRIES = {
             "【标题】原创标题（含emoji，吸引眼球）\n"
             "【正文】原创正文"
         ),
+
         "image_prompt": (
             "Enhance this food/restaurant photo for social media: "
             "improve brightness, contrast, and color saturation to make the food look more appetizing. "
@@ -199,7 +308,21 @@ INDUSTRIES = {
     "medical_beauty": {
         "label": "💉 医疗美容",
         "desc": "皮肤管理 / 医美项目 / 美容诊所",
-        "mode": "create",
+
+        "system_prompt": (
+            "你是专业的医疗美容小红书文案改写专家。\n\n"
+            "改写规则：\n"
+            "1. 保留核心信息（项目名称、效果体验、价格、机构资质）\n"
+            "2. 完全更换表达方式，改写率 > 70%\n"
+            "3. 风格：专业可信 + 真实亲切，避免过度营销\n"
+            "4. 合规：不夸大效果、不承诺疗效、不用医疗绝对化用语\n"
+            "5. 强调「专业」「安全」「正规资质」「个性化方案」等信任词\n"
+            "6. 融入城市本地元素，增加本地属性\n\n"
+            "请严格按以下格式输出：\n"
+            "【标题】改写后的标题\n"
+            "【正文】改写后的正文"
+        ),
+
         "profile_fields": [
             {"key": "store_name",    "label": "机构名称", "placeholder": "如：纯粹医美·光感肌肤管理"},
             {"key": "main_service",  "label": "主营项目", "placeholder": "如：水光针 / 热玛吉 / 皮肤管理"},
@@ -221,6 +344,7 @@ INDUSTRIES = {
             "【标题】原创标题（含emoji，体现效果感）\n"
             "【正文】原创正文"
         ),
+
         "image_prompt": (
             "Enhance this medical beauty/skincare clinic photo for social media: "
             "improve lighting to create a clean, professional, clinical yet welcoming atmosphere. "
@@ -230,43 +354,73 @@ INDUSTRIES = {
     },
 
     "fashion": {
-        "label": "👗 服装销售",
-        "desc": "女装 / 男装 / 穿搭 / 买手店",
-        "mode": "create",
+        "label": "🛍️ 服装销售",
+        "desc": "实体门店 / 网店直播 / 穿搭种草 / 新品上架",
+
+        "system_prompt": (
+            "你是专业的服装穿搭小红书文案改写专家。\n\n"
+            "改写规则：\n"
+            "1. 保留核心卖点（款式特点、面料质感、适合场合、价格、搭配建议）\n"
+            "2. 完全更换表达方式，改写率 > 70%\n"
+            "3. 风格：时尚有种草力，口语化，多用穿搭场景，适当使用 emoji\n"
+            "4. 多用「显瘦」「显白」「气质」「百搭」「穿搭公式」等种草词\n"
+            "5. 融入本地消费场景（商场 / 街边店 / 市集），增加本地属性\n"
+            "6. 结尾保留并优化话题标签（5-8个）\n\n"
+            "请严格按以下格式输出：\n"
+            "【标题】改写后的标题\n"
+            "【正文】改写后的正文"
+        ),
+
         "profile_fields": [
-            {"key": "store_name",       "label": "店铺名称", "placeholder": "如：MOMO 买手集合店"},
-            {"key": "store_style",      "label": "主营风格", "placeholder": "如：韩系显瘦 / 法式复古 / 日系小清新"},
-            {"key": "target_customer",  "label": "目标客群", "placeholder": "如：20-30岁上班族女性"},
-            {"key": "price_range",      "label": "价格区间", "placeholder": "如：单品99-399元"},
+            {"key": "store_name",    "label": "店铺名称",   "placeholder": "如：衣柜研究所 / 小熊女装"},
+            {"key": "main_category", "label": "主营品类",   "placeholder": "如：休闲女装 / 男装 / 童装 / 男女皆有"},
+            {"key": "style_tag",     "label": "风格标签",   "placeholder": "如：百搭休闲 / 韩系甜美 / 职场通勤 / 运动户外"},
+            {"key": "price_range",   "label": "价格区间",   "placeholder": "如：单品59-199元 / 全场百元以内"},
         ],
-        "brief_placeholder": "如：新到秋冬针织套装，焦糖色，宽松版型，显白百搭，想做穿搭种草",
+        "brief_placeholder": "如：刚到一批春款碎花连衣裙，版型显瘦，颜色好看，价格才89元，想做种草吸引进店",
         "create_system_prompt": (
-            "你是专业的服装穿搭小红书文案创作专家。\n\n"
+            "你是专业的服装穿搭小红书文案创作专家，擅长为本地实体服装店创作种草内容。\n\n"
             "根据店铺信息和今日主题，创作一篇原创小红书穿搭种草笔记。\n\n"
             "创作要求：\n"
-            "1. 风格：时尚有种草力，口语化，多用穿搭场景描述，适当使用 emoji\n"
-            "2. 结构：视觉钩子标题 + 穿搭场景代入 + 单品亮点描述 + 搭配建议 + 购买引导\n"
-            "3. 多用「显瘦」「显白」「气质」「百搭」「穿搭公式」等种草词\n"
-            "4. 可以加多个穿搭场景（上班/约会/休闲）\n"
-            "5. 结尾加话题标签（5-8个）\n"
-            "6. 字数：正文300-500字\n\n"
+            "1. 风格：接地气、有种草力，口语化，真实感强，适当使用 emoji\n"
+            "2. 结构：视觉钩子标题 + 穿搭场景代入 + 款式亮点（颜色/版型/面料）+ 搭配建议 + 到店/购买引导\n"
+            "3. 多用「显瘦」「显白」「气质」「百搭」「性价比」「新款」等高转化词\n"
+            "4. 可以描述不同穿搭场景（逛街/上班/约会/周末休闲）\n"
+            "5. 结尾引导到店试穿或私信询价，加话题标签（5-8个）\n"
+            "6. 字数：正文300-500字，语言贴近本地消费者\n\n"
             "请严格按以下格式输出：\n"
-            "【标题】原创标题（含emoji，体现穿搭感）\n"
+            "【标题】原创标题（含emoji，突出款式或价格亮点）\n"
             "【正文】原创正文"
         ),
+
         "image_prompt": (
-            "Enhance this fashion/clothing product photo for social media: "
+            "Enhance this clothing/fashion product photo for social media: "
             "improve lighting and colors to make the clothing look more appealing and true-to-color. "
-            "Clean up the background if needed. Sharpen fabric texture details. "
-            "Remove any text, watermarks, or price tags. "
-            "Make it look like a professional fashion e-commerce or lookbook photo."
+            "Clean up the background if possible. Sharpen fabric texture details. "
+            "Remove any text overlays, price tags, or watermarks. "
+            "Make the colors look vivid and the fabric look high quality. "
+            "The result should look like a clean product photo suitable for a clothing store post."
         ),
     },
 
     "drinks": {
         "label": "🍺 精酿&酒吧",
         "desc": "精酿啤酒 / 鸡尾酒 / 清吧 / 居酒屋",
-        "mode": "create",
+
+        "system_prompt": (
+            "你是专业的酒吧/精酿饮品小红书文案改写专家。\n\n"
+            "改写规则：\n"
+            "1. 保留核心卖点（招牌酒款、环境氛围、价格、特色活动）\n"
+            "2. 完全更换表达方式，改写率 > 70%\n"
+            "3. 风格：有氛围感、微醺感，口语化，适当使用 emoji\n"
+            "4. 多用「氛围感」「微醺」「宝藏小店」「下班后的第一杯」等情绪词\n"
+            "5. 融入城市夜生活场景，增加本地属性\n"
+            "6. 结尾保留并优化话题标签（5-8个）\n\n"
+            "请严格按以下格式输出：\n"
+            "【标题】改写后的标题\n"
+            "【正文】改写后的正文"
+        ),
+
         "profile_fields": [
             {"key": "store_name",  "label": "店名",       "placeholder": "如：雾霾蓝精酿小馆"},
             {"key": "store_style", "label": "风格/类型",  "placeholder": "如：工业风精酿 / 日式居酒屋 / 复古清吧"},
@@ -288,6 +442,7 @@ INDUSTRIES = {
             "【标题】原创标题（含emoji，有情绪感）\n"
             "【正文】原创正文"
         ),
+
         "image_prompt": (
             "Enhance this bar/cocktail/craft beer photo for social media: "
             "improve lighting to create a warm, atmospheric, moody feel. "
@@ -300,12 +455,26 @@ INDUSTRIES = {
     "photography": {
         "label": "📸 摄影工作室",
         "desc": "写真 / 婚纱 / 儿童 / 商业摄影",
-        "mode": "create",
+
+        "system_prompt": (
+            "你是专业的摄影工作室小红书文案改写专家。\n\n"
+            "改写规则：\n"
+            "1. 保留核心卖点（摄影风格、出片效果、套餐价格、拍摄体验）\n"
+            "2. 完全更换表达方式，改写率 > 70%\n"
+            "3. 风格：有质感、有故事感，口语化，适当使用 emoji\n"
+            "4. 多用「光影」「质感」「记录美好」「专属」「出片率高」等种草词\n"
+            "5. 融入城市文艺场景，增加本地属性\n"
+            "6. 结尾保留并优化话题标签（5-8个）\n\n"
+            "请严格按以下格式输出：\n"
+            "【标题】改写后的标题\n"
+            "【正文】改写后的正文"
+        ),
+
         "profile_fields": [
-            {"key": "store_name",    "label": "工作室名称", "placeholder": "如：光影印记摄影工作室"},
-            {"key": "main_service",  "label": "主营类型",   "placeholder": "如：个人写真 / 情侣写真 / 儿童摄影"},
-            {"key": "photo_style",   "label": "拍摄风格",   "placeholder": "如：日系胶片 / 韩系清新 / 复古港风"},
-            {"key": "price_range",   "label": "套餐价格",   "placeholder": "如：单人写真套餐599起"},
+            {"key": "store_name",   "label": "工作室名称", "placeholder": "如：光影印记摄影工作室"},
+            {"key": "main_service", "label": "主营类型",   "placeholder": "如：个人写真 / 情侣写真 / 儿童摄影"},
+            {"key": "photo_style",  "label": "拍摄风格",   "placeholder": "如：日系胶片 / 韩系清新 / 复古港风"},
+            {"key": "price_range",  "label": "套餐价格",   "placeholder": "如：单人写真套餐599起"},
         ],
         "brief_placeholder": "如：最近出了一组日系胶片风格的闺蜜写真，在复古咖啡馆拍的，特别好看，想吸引新客预约",
         "create_system_prompt": (
@@ -322,6 +491,7 @@ INDUSTRIES = {
             "【标题】原创标题（含emoji，体现画面感）\n"
             "【正文】原创正文"
         ),
+
         "image_prompt": (
             "Enhance this portrait/photography studio photo for social media: "
             "improve overall tone, contrast, and warmth to match the intended artistic style. "
@@ -340,6 +510,7 @@ _DEFAULTS = dict(
     authed=False,
     invite_code="",
     industry_id=None,
+    selected_mode=None,    # "rewrite" 或 "create"，由用户选择
     city="北京",
     # Mode A：竞品参考
     note_title="",
@@ -352,12 +523,12 @@ _DEFAULTS = dict(
     images_done=False,
     extract_log="",
     # Mode B：原创生成
-    store_profile={},      # {field_key: value}
+    store_profile={},
     daily_brief="",
-    create_images=[],      # 用户上传的自己的图片
-    dynamic_image_prompt="",   # Mode B 根据文案内容动态生成的图片处理提示词
-    scene_images=[],           # Mode B Imagen 3 生成的场景配图
-    scene_prompt="",           # Imagen 3 使用的场景描述提示词
+    create_images=[],
+    dynamic_image_prompt="",
+    scene_images=[],
+    scene_prompt="",
     feedback_submitted=False,
 )
 for _k, _v in _DEFAULTS.items():
@@ -636,12 +807,7 @@ def generate_original_content(store_profile: dict, brief: str, industry: dict, c
 
 
 def generate_dynamic_image_prompt(copy_text: str, industry: dict) -> str:
-    """Mode B：根据已生成的文案，动态生成 Gemini 图片处理提示词。
-
-    逻辑：用 DeepSeek 分析文案的情绪/场景/风格关键词，
-    生成一段英文 Gemini 提示词，指导图片在光线/色调/氛围上
-    与文案内容匹配（不改变主体构图，不生成新内容）。
-    """
+    """Mode B：根据已生成的文案，动态生成 Gemini 图片处理提示词"""
     from openai import OpenAI
     api_key = _get_api_key("DEEPSEEK_API_KEY")
     client = OpenAI(api_key=api_key, base_url="https://api.deepseek.com")
@@ -670,13 +836,23 @@ def generate_dynamic_image_prompt(copy_text: str, industry: dict) -> str:
     return resp.choices[0].message.content.strip()
 
 
-def generate_scene_from_copy(copy_text: str, industry: dict) -> tuple:
-    """Mode B：DeepSeek 将文案转为场景描述 → Imagen 3 生成全新配图。
+def _build_scene_system_prompt(industry: dict, is_pro: bool) -> str:
+    style = "cinematic lighting, ultra realistic, portrait 9:16" if is_pro else "ultra realistic, lifestyle photography"
+    return (
+        "You are an expert at writing image generation prompts for social media.\n"
+        "Given a Chinese XiaoHongShu post, write a detailed English prompt for image generation.\n\n"
+        "Requirements:\n"
+        "1. Describe a specific scene, setting, lighting, and atmosphere matching the post's emotion\n"
+        "2. Include the generic product/food/environment type (do NOT mention brand names)\n"
+        f"3. Style: {style}\n"
+        "4. Match emotional keywords from the post (warm, cozy, vibrant, elegant, fresh, etc.)\n"
+        "5. Output: one detailed English prompt only (3-4 sentences), no explanations, no Chinese\n\n"
+        f"Industry: {industry['label']}"
+    )
 
-    与 edit_image_with_gemini 的本质区别：
-    - edit_image_with_gemini：修改已有图片（有输入图）
-    - generate_scene_from_copy：无中生有（无需输入图，纯文生图）
 
+def generate_scene_nano_banana(copy_text: str, industry: dict) -> tuple:
+    """免费档：Gemini 2.5 Flash Image 文生图（1:1方图，500次/天共享额度）
     返回 (images: list[PIL.Image], scene_prompt: str, error_msg: str)
     """
     from openai import OpenAI
@@ -686,25 +862,78 @@ def generate_scene_from_copy(copy_text: str, industry: dict) -> tuple:
     except ImportError:
         return [], "", "请先安装 google-genai 库"
 
-    # Step 1: DeepSeek 将文案情绪/场景转为 Imagen 3 的英文视觉描述
-    ds_client = OpenAI(api_key=_get_api_key("DEEPSEEK_API_KEY"), base_url="https://api.deepseek.com")
-    scene_system = (
-        "You are an expert at writing Imagen 3 image generation prompts for social media.\n"
-        "Given a Chinese XiaoHongShu post, write a detailed English prompt for Imagen 3.\n\n"
-        "Requirements:\n"
-        "1. Describe a specific scene, setting, lighting, and atmosphere matching the post's emotion\n"
-        "2. Include the generic product/food/environment type (do NOT mention brand names)\n"
-        "3. Style: professional lifestyle/product photography, ultra realistic\n"
-        "4. Portrait orientation 9:16, Instagram-worthy composition\n"
-        "5. Match emotional keywords from the post (warm, cozy, vibrant, elegant, fresh, etc.)\n"
-        "6. Output: one detailed English prompt only (3-4 sentences), no explanations, no Chinese\n\n"
-        f"Industry: {industry['label']}"
-    )
+    # Step 1: DeepSeek 生成英文场景描述
     try:
+        ds_client = OpenAI(api_key=_get_api_key("DEEPSEEK_API_KEY"), base_url="https://api.deepseek.com")
         ds_resp = ds_client.chat.completions.create(
             model="deepseek-chat",
             messages=[
-                {"role": "system", "content": scene_system},
+                {"role": "system", "content": _build_scene_system_prompt(industry, is_pro=False)},
+                {"role": "user", "content": f"Post content:\n{copy_text[:500]}"},
+            ],
+            temperature=0.6,
+            max_tokens=150,
+        )
+        scene_prompt = ds_resp.choices[0].message.content.strip()
+    except Exception as e:
+        return [], "", f"场景描述生成失败：{e}"
+
+    # Step 2: Gemini 2.5 Flash Image 文生图（调用2次得到2张图）
+    gai_key = _get_api_key("GOOGLE_API_KEY")
+    if not gai_key:
+        return [], scene_prompt, "未配置 Google API Key"
+
+    g_client = genai.Client(api_key=gai_key)
+    images = []
+    last_err = ""
+    for _ in range(2):
+        try:
+            response = g_client.models.generate_content(
+                model="gemini-2.5-flash-image",
+                contents=[scene_prompt],
+                config=types.GenerateContentConfig(
+                    response_modalities=["IMAGE", "TEXT"],
+                ),
+            )
+            if response.candidates:
+                for part in response.candidates[0].content.parts:
+                    if (
+                        hasattr(part, "inline_data")
+                        and part.inline_data
+                        and getattr(part.inline_data, "mime_type", "").startswith("image/")
+                    ):
+                        images.append(Image.open(io.BytesIO(part.inline_data.data)).convert("RGB"))
+                        break
+        except Exception as e:
+            err = str(e)
+            if "quota" in err.lower() or "429" in err:
+                last_err = "免费配图额度已用完（每日500次共享限制），请稍后再试或升级Pro"
+                break
+            last_err = f"生成失败：{err[:120]}"
+
+    if images:
+        return images, scene_prompt, ""
+    return [], scene_prompt, last_err or "Gemini 未返回图片数据"
+
+
+def generate_scene_with_imagen4(copy_text: str, industry: dict) -> tuple:
+    """Pro档：Imagen 4 Fast 文生图（9:16竖图，高质量，消耗Pro配额）
+    返回 (images: list[PIL.Image], scene_prompt: str, error_msg: str)
+    """
+    from openai import OpenAI
+    try:
+        from google import genai
+        from google.genai import types
+    except ImportError:
+        return [], "", "请先安装 google-genai 库"
+
+    # Step 1: DeepSeek 生成英文场景描述（Pro风格提示词）
+    try:
+        ds_client = OpenAI(api_key=_get_api_key("DEEPSEEK_API_KEY"), base_url="https://api.deepseek.com")
+        ds_resp = ds_client.chat.completions.create(
+            model="deepseek-chat",
+            messages=[
+                {"role": "system", "content": _build_scene_system_prompt(industry, is_pro=True)},
                 {"role": "user", "content": f"Post content:\n{copy_text[:500]}"},
             ],
             temperature=0.6,
@@ -714,14 +943,15 @@ def generate_scene_from_copy(copy_text: str, industry: dict) -> tuple:
     except Exception as e:
         return [], "", f"场景描述生成失败：{e}"
 
-    # Step 2: Imagen 3 文生图
+    # Step 2: Imagen 4 Fast 文生图（9:16竖图）
     gai_key = _get_api_key("GOOGLE_API_KEY")
     if not gai_key:
         return [], scene_prompt, "未配置 Google API Key"
+
     g_client = genai.Client(api_key=gai_key)
     try:
         response = g_client.models.generate_images(
-            model="imagen-3.0-generate-001",
+            model="imagen-4.0-fast-generate-001",
             prompt=scene_prompt,
             config=types.GenerateImagesConfig(
                 number_of_images=2,
@@ -734,13 +964,13 @@ def generate_scene_from_copy(copy_text: str, industry: dict) -> tuple:
                 images.append(Image.open(io.BytesIO(gi.image.image_bytes)).convert("RGB"))
         if images:
             return images, scene_prompt, ""
-        return [], scene_prompt, "Imagen 3 未返回图片数据"
+        return [], scene_prompt, "Imagen 4 未返回图片数据"
     except Exception as e:
         err = str(e)
         if "quota" in err.lower():
-            return [], scene_prompt, "Imagen 3 配额不足，请稍后重试"
+            return [], scene_prompt, "API 配额不足，请稍后重试"
         if "not found" in err.lower() or "404" in err:
-            return [], scene_prompt, "Imagen 3 模型暂不可用（需确认 Google AI 账号已开通此功能）"
+            return [], scene_prompt, "Imagen 4 Fast 模型暂不可用（需确认 Google AI 账号已开通此功能）"
         return [], scene_prompt, f"生成失败：{err[:150]}"
 
 
@@ -868,10 +1098,30 @@ with st.sidebar:
         index=_city_idx,
         label_visibility="collapsed",
     )
-    st.caption("⚠️ 此项目为测试阶段，当前仅支持济南市内各区\n后期将增设全国各地域")
+    st.caption("⚠️ 测试阶段仅支持济南，后期将支持全国")
 
     st.divider()
-    st.caption("Demo v4.0 · 内测版\n\n遇到问题请截图反馈给 David")
+
+    # Pro 配额显示
+    _code = st.session_state.invite_code
+    _pro_used = _get_pro_used(_code)
+    _pro_left = _PRO_GEN_LIMIT - _pro_used
+    st.markdown("**⭐ Pro 精品配图额度**")
+    if _pro_left > 10:
+        st.success(f"剩余 **{_pro_left}** / {_PRO_GEN_LIMIT} 次")
+    elif _pro_left > 0:
+        st.warning(f"剩余 **{_pro_left}** / {_PRO_GEN_LIMIT} 次（快用完了）")
+    else:
+        st.error("Pro 额度已用完")
+        st.caption("联系 David 获取新额度")
+
+    st.caption(
+        "免费配图：每日500次共享额度\n"
+        "Pro配图：Imagen 4，专属9:16竖图"
+    )
+
+    st.divider()
+    st.caption("Demo v5.0 · 内测版\n\n遇到问题请截图反馈给 David")
 
     if st.button("退出登录", use_container_width=True):
         for k in list(st.session_state.keys()):
@@ -883,13 +1133,11 @@ with st.sidebar:
 #  页面2：行业选择（8个，2行×4列）
 # ═══════════════════════════════════════════════════════
 st.title("📱 小红书内容 Agent")
-st.caption("选择行业 → AI 生成专业笔记 → 图片处理 → 一键下载")
+st.caption("选择行业 → 选择工作方式 → AI 生成专业笔记 → 图片处理 → 一键下载")
 st.divider()
 
-st.markdown("### 选择你的行业")
-st.caption("📋 竞品参考：拆解爆文结构改写  ·  ✨ 原创生成：根据你的店铺信息创作")
+st.markdown("### 第一步：选择你的行业")
 
-# 两行 × 4列 的行业卡片
 industry_keys = list(INDUSTRIES.keys())
 rows = [industry_keys[i:i+4] for i in range(0, len(industry_keys), 4)]
 
@@ -901,24 +1149,17 @@ for row_keys in rows:
         border_color = "#ff2442" if selected else "#e5e7eb"
         bg_color = "#fff5f6" if selected else "white"
         check = " ✓" if selected else ""
-        is_create = info["mode"] == "create"
-        badge_html = (
-            '<span class="mode-b">✨ 原创生成</span>'
-            if is_create else
-            '<span class="mode-a">📋 竞品参考</span>'
-        )
         with col:
             st.markdown(
                 f"""
                 <div style="border:2px solid {border_color}; border-radius:12px;
                             padding:14px 10px; text-align:center; background:{bg_color};
-                            min-height:130px;">
+                            min-height:110px;">
                     <div style="font-size:1.8rem;">{info['label'].split()[0]}</div>
                     <div style="font-weight:bold; margin-top:4px; font-size:0.9rem;">
                         {info['label'].split(' ', 1)[1]}{check}
                     </div>
                     <div style="font-size:0.72rem; color:#6b7280; margin-top:3px;">{info['desc']}</div>
-                    <div style="margin-top:6px;">{badge_html}</div>
                 </div>
                 """,
                 unsafe_allow_html=True,
@@ -926,6 +1167,7 @@ for row_keys in rows:
             if st.button("选择", key=f"sel_{ikey}", use_container_width=True,
                          type="primary" if selected else "secondary"):
                 st.session_state.industry_id = ikey
+                st.session_state.selected_mode = None   # 重置模式选择
                 st.session_state.content_ready = False
                 st.session_state.rewrite_done = False
                 st.session_state.images_done = False
@@ -947,10 +1189,106 @@ if not st.session_state.industry_id:
     st.stop()
 
 industry = INDUSTRIES[st.session_state.industry_id]
-mode = industry["mode"]
 
-mode_desc = "原创生成模式 ✨ — 填写店铺信息，AI 为你创作专属文案" if mode == "create" else "竞品参考模式 📋 — 粘贴竞品链接，AI 改写为你的风格"
-st.success(f"当前行业：**{industry['label']}** · {mode_desc} · 城市：**{st.session_state.city}**")
+
+# ═══════════════════════════════════════════════════════
+#  页面3：工作方式选择（竞品参考 vs 原创生成）
+# ═══════════════════════════════════════════════════════
+if not st.session_state.selected_mode:
+    st.divider()
+    st.markdown("### 第二步：选择工作方式")
+
+    col_a, col_b = st.columns(2)
+
+    with col_a:
+        st.markdown(
+            """
+            <div style="border:2px solid #3b82f6; border-radius:14px; padding:20px 16px; min-height:200px;">
+            <div style="font-size:2rem; text-align:center;">📋</div>
+            <div style="font-weight:bold; text-align:center; font-size:1rem; margin:8px 0; color:#1d4ed8;">
+                竞品参考模式
+            </div>
+            <ul style="font-size:0.83rem; color:#374151; padding-left:18px; margin:0 0 10px 0;">
+                <li>粘贴竞品小红书笔记链接</li>
+                <li>AI 拆解爆文结构</li>
+                <li>自动改写成你的风格</li>
+                <li>图片去水印 / 去文字</li>
+            </ul>
+            <div style="font-size:0.75rem; color:#6b7280;">
+                💡 适合：参考同行爆文、快速出内容
+            </div>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
+        st.markdown(
+            "<div style='background:#eff6ff; border-radius:8px; padding:6px 10px; "
+            "font-size:0.78rem; color:#1d4ed8; margin-top:4px;'>"
+            "✅ 文案改写：免费 &nbsp;|&nbsp; ✅ 图片去水印：免费</div>",
+            unsafe_allow_html=True,
+        )
+        if st.button("选择竞品参考模式", key="mode_sel_a", type="primary", use_container_width=True):
+            st.session_state.selected_mode = "rewrite"
+            st.rerun()
+
+    with col_b:
+        st.markdown(
+            """
+            <div style="border:2px solid #10b981; border-radius:14px; padding:20px 16px; min-height:200px;">
+            <div style="font-size:2rem; text-align:center;">✨</div>
+            <div style="font-weight:bold; text-align:center; font-size:1rem; margin:8px 0; color:#065f46;">
+                原创生成模式
+            </div>
+            <ul style="font-size:0.83rem; color:#374151; padding-left:18px; margin:0 0 10px 0;">
+                <li>填写你的店铺 / 业务信息</li>
+                <li>AI 根据今日主题创作文案</li>
+                <li>美化真实照片（免费）</li>
+                <li>AI 生成配图（免费版 / Pro精品版）</li>
+            </ul>
+            <div style="font-size:0.75rem; color:#6b7280;">
+                💡 适合：发原创内容、建立品牌形象
+            </div>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
+        st.markdown(
+            "<div style='background:#f0fdf4; border-radius:8px; padding:6px 10px; "
+            "font-size:0.78rem; color:#065f46; margin-top:4px;'>"
+            "✅ 文案创作：免费 &nbsp;|&nbsp; ✅ 免费AI配图 &nbsp;|&nbsp; ⭐ Pro精品配图（50次/账号）</div>",
+            unsafe_allow_html=True,
+        )
+        if st.button("选择原创生成模式", key="mode_sel_b", use_container_width=True):
+            st.session_state.selected_mode = "create"
+            st.rerun()
+
+    st.stop()
+
+
+# 已选择模式后的状态栏
+mode = st.session_state.selected_mode
+mode_label = "📋 竞品参考模式" if mode == "rewrite" else "✨ 原创生成模式"
+
+col_status, col_switch = st.columns([4, 1])
+with col_status:
+    st.success(f"行业：**{industry['label']}** · **{mode_label}** · 城市：**{st.session_state.city}**")
+with col_switch:
+    if st.button("切换模式", use_container_width=True):
+        st.session_state.selected_mode = None
+        st.session_state.content_ready = False
+        st.session_state.rewrite_done = False
+        st.session_state.images_done = False
+        st.session_state.rewrite_result = ""
+        st.session_state.edited_images = []
+        st.session_state.note_title = ""
+        st.session_state.note_text = ""
+        st.session_state.note_images = []
+        st.session_state.store_profile = {}
+        st.session_state.daily_brief = ""
+        st.session_state.scene_images = []
+        st.session_state.scene_prompt = ""
+        st.rerun()
+
 st.divider()
 
 
@@ -1161,9 +1499,7 @@ else:
             st.rerun()
 
     if st.session_state.content_ready and mode == "create":
-        store_filled = {
-            k: v for k, v in st.session_state.store_profile.items() if v
-        }
+        store_filled = {k: v for k, v in st.session_state.store_profile.items() if v}
         parts = []
         if store_filled:
             parts.append(f"店铺信息 ✓（{len(store_filled)}项）")
@@ -1192,6 +1528,7 @@ if st.session_state.content_ready:
         f'<span class="step-num">2</span> **{label_2}**',
         unsafe_allow_html=True,
     )
+    st.caption("🆓 免费功能 · 由 DeepSeek 驱动")
 
     if st.button(btn_label, type="primary", key="btn_rewrite"):
         if mode == "rewrite" and not st.session_state.note_title and not st.session_state.note_text:
@@ -1217,7 +1554,6 @@ if st.session_state.content_ready:
                         )
                     st.session_state.rewrite_result = result
                     st.session_state.rewrite_done = True
-                    # Mode B：根据生成的文案内容，动态生成匹配的图片处理提示词
                     if mode == "create":
                         try:
                             dp = generate_dynamic_image_prompt(result, industry)
@@ -1244,16 +1580,16 @@ if st.session_state.content_ready:
 
 # ═══════════════════════════════════════════════════════
 #  Step 3：图片处理
-#  Mode A：去水印（Gemini 编辑）
-#  Mode B：双方案 ─ 方案A 美化原图(Gemini) + 方案B AI生成配图(Imagen 3)
+#  Mode A：去水印（Gemini 编辑，免费）
+#  Mode B：方案A 美化原图（Gemini，免费）+ 方案B AI配图（免费版 / Pro精品版）
 # ═══════════════════════════════════════════════════════
 if st.session_state.rewrite_done and (st.session_state.note_images or mode == "create"):
     st.divider()
     st.markdown('<span class="step-num">3</span> **图片处理**', unsafe_allow_html=True)
 
-    # ─── Mode A：竞品参考模式 → 去水印 / 去文字 ───
+    # ─── Mode A：竞品参考 → 去水印/去文字（免费）───
     if mode == "rewrite":
-        st.caption("去除竞品水印和文字，图片内容保持不变")
+        st.caption("🆓 免费功能 · 去除竞品水印和文字，图片内容保持不变")
         img_prompt_r = industry["image_prompt"]
 
         with st.expander("查看图片处理提示词", expanded=False):
@@ -1314,13 +1650,13 @@ if st.session_state.rewrite_done and (st.session_state.note_images or mode == "c
                     prog3.progress(1.0, text="重试完成")
                     st.rerun()
 
-    # ─── Mode B：原创模式 → 两种图片方案 ───
+    # ─── Mode B：原创模式 → 方案A 美化 + 方案B AI配图（免费/Pro）───
     else:
         st.caption("两种方案可单独使用，也可都做——最终选最好看的发布")
 
         # ── 方案A：美化原图（仅当用户已上传图片时显示）──
         if st.session_state.note_images:
-            st.markdown("**📸 方案A：美化原图** — AI 根据文案氛围调整光线 / 色调 / 质感")
+            st.markdown("**📸 方案A：美化原图** — 🆓 免费 · AI 根据文案氛围调整光线 / 色调 / 质感")
             img_prompt_a = (
                 st.session_state.dynamic_image_prompt
                 if st.session_state.dynamic_image_prompt
@@ -1390,49 +1726,100 @@ if st.session_state.rewrite_done and (st.session_state.note_images or mode == "c
 
             st.divider()
 
-        # ── 方案B：Imagen 3 文生图（无需上传照片）──
-        st.markdown("**🖼️ 方案B：AI 生成场景配图** — Imagen 3 根据文案内容全新创作")
+        # ── 方案B：AI 生成配图（免费版 + Pro精品版）──
+        st.markdown("**🖼️ 方案B：AI 生成场景配图** — 无需上传照片，AI 根据文案内容创作")
+
+        # 多用户额度提示
         st.info(
-            "✅ **无需上传照片**，AI 根据文案情绪自动生成专业配图\n\n"
-            "✅ 场景 / 光线 / 氛围与文案高度匹配，9:16 竖图，直接发小红书\n\n"
-            "⚠️ 生成的是通用场景图，**不含你店铺的特定产品/装修**\n"
-            "→ 适合：没有好照片时 / 想要更精致的场景封面 / 与自己实拍图混搭"
+            "**🆓 免费版**（Gemini Nano）：1:1 方图，500次/天由**所有测试用户共享**\n\n"
+            "**⭐ Pro精品版**（Imagen 4 Fast）：9:16 竖图，与小红书完美适配，画质更佳\n\n"
+            "⚠️ **多人同时使用提示**：免费额度为共享资源，高峰时段（晚上7-10点）可能暂时不可用。"
+            "建议：错开高峰期使用，或选择 Pro精品版获取专属额度。"
         )
 
-        col_gen, col_regen = st.columns([2, 1])
-        with col_gen:
-            btn_gen = st.button("🖼️ 生成AI配图（2张）", type="primary",
-                                key="btn_gen_scene", use_container_width=True)
-        with col_regen:
-            btn_regen = (
-                st.button("🔄 换一批", key="btn_regen_scene", use_container_width=True)
-                if st.session_state.scene_images else None
-            )
+        _code_now = st.session_state.invite_code
+        _pro_used_now = _get_pro_used(_code_now)
+        _pro_left_now = _PRO_GEN_LIMIT - _pro_used_now
+        _has_quota = _pro_left_now > 0
 
-        if btn_gen or btn_regen:
-            with st.spinner("Imagen 3 正在生成… 约 15~30 秒 ⏳"):
-                imgs, s_prompt, s_err = generate_scene_from_copy(
+        col_free, col_pro = st.columns(2)
+
+        with col_free:
+            st.markdown("**🆓 免费版** · 1:1方图 · 共享额度")
+            btn_free = st.button(
+                "🖼️ 生成免费AI配图（2张）",
+                key="btn_gen_free",
+                use_container_width=True,
+            )
+            if st.session_state.scene_images and st.session_state.get("scene_tier") == "free":
+                st.button("🔄 换一批（免费版）", key="btn_regen_free", use_container_width=True)
+
+        with col_pro:
+            st.markdown(f"**⭐ Pro精品版** · 9:16竖图 · 剩余 {_pro_left_now}/{_PRO_GEN_LIMIT} 次")
+            if _has_quota:
+                btn_pro = st.button(
+                    f"⭐ 生成Pro精品配图（2张）· 消耗1次",
+                    key="btn_gen_pro",
+                    type="primary",
+                    use_container_width=True,
+                )
+            else:
+                st.button(
+                    "⭐ Pro 额度已用完",
+                    key="btn_gen_pro_disabled",
+                    disabled=True,
+                    use_container_width=True,
+                )
+                st.caption("联系 David 获取新额度")
+                btn_pro = False
+
+        # 免费版生图
+        if btn_free or (
+            st.session_state.get("_regen_free_clicked")
+            and st.session_state.get("scene_tier") == "free"
+        ):
+            with st.spinner("Gemini 正在生成… 约 10~20 秒 ⏳"):
+                imgs, s_prompt, s_err = generate_scene_nano_banana(
                     st.session_state.rewrite_result, industry
                 )
             if imgs:
                 st.session_state.scene_images = imgs
                 st.session_state.scene_prompt = s_prompt
-                st.success(f"生成成功！共 {len(imgs)} 张 · 9:16 竖图")
+                st.session_state["scene_tier"] = "free"
+                st.success(f"生成成功！共 {len(imgs)} 张 · 1:1 方图")
             else:
                 st.error(f"生成失败：{s_err}")
-                if s_prompt:
-                    st.caption(f"场景描述：{s_prompt}")
+                if s_err and "共享" in s_err:
+                    st.warning("💡 免费额度繁忙，建议换个时间段再试，或使用 Pro精品版")
+            st.rerun()
+
+        # Pro 版生图
+        if btn_pro and _has_quota:
+            with st.spinner("Imagen 4 Fast 正在生成… 约 15~30 秒 ⏳"):
+                imgs, s_prompt, s_err = generate_scene_with_imagen4(
+                    st.session_state.rewrite_result, industry
+                )
+            if imgs:
+                _inc_pro_used(_code_now)
+                st.session_state.scene_images = imgs
+                st.session_state.scene_prompt = s_prompt
+                st.session_state["scene_tier"] = "pro"
+                new_left = _pro_left_now - 1
+                st.success(f"生成成功！共 {len(imgs)} 张 · 9:16 竖图 · Pro 剩余 {new_left}/{_PRO_GEN_LIMIT} 次")
+            else:
+                st.error(f"生成失败：{s_err}")
             st.rerun()
 
         if st.session_state.scene_images:
+            tier_label = "Pro精品" if st.session_state.get("scene_tier") == "pro" else "免费版"
             img_cols = st.columns(min(len(st.session_state.scene_images), 4))
             for i, img in enumerate(st.session_state.scene_images):
                 with img_cols[i % 4]:
-                    st.image(img, caption=f"AI配图 {i+1}", use_container_width=True)
+                    st.image(img, caption=f"AI配图 {i+1}（{tier_label}）", use_container_width=True)
 
-            with st.expander("查看生成使用的场景描述提示词", expanded=False):
+            with st.expander("查看场景描述提示词", expanded=False):
                 st.info(st.session_state.scene_prompt)
-                st.caption("DeepSeek 根据文案内容生成，发送给 Imagen 3 执行")
+                st.caption("DeepSeek 根据文案内容生成，发送给 AI 模型执行")
 
 
 # ═══════════════════════════════════════════════════════
@@ -1463,9 +1850,8 @@ if st.session_state.rewrite_done:
                     st.session_state.rewrite_result,
                     good_imgs,
                 )
-                label_c2 = "📦 文案+处理图（ZIP）"
                 st.download_button(
-                    label_c2,
+                    "📦 文案+处理图（ZIP）",
                     data=zip_data,
                     file_name=f"小红书内容_{ts}.zip",
                     mime="application/zip",
@@ -1496,10 +1882,11 @@ if st.session_state.rewrite_done:
                 st.session_state.rewrite_result,
                 st.session_state.scene_images,
             )
+            tier_label = "Pro精品" if st.session_state.get("scene_tier") == "pro" else "免费版"
             st.download_button(
-                "🖼️ 文案+AI配图（ZIP）",
+                f"🖼️ 文案+AI配图·{tier_label}（ZIP）",
                 data=zip_scene,
-                file_name=f"AI配图_{ts}.zip",
+                file_name=f"AI配图_{tier_label}_{ts}.zip",
                 mime="application/zip",
                 use_container_width=True,
             )
@@ -1537,4 +1924,4 @@ elif st.session_state.feedback_submitted:
 
 # ─── 页脚 ───
 st.divider()
-st.caption("📱 小红书内容 Agent · Demo v4.0 · 8大行业 · 双模式")
+st.caption("📱 小红书内容 Agent · Demo v5.0 · 8大行业全双模式 · 免费+Pro双档AI配图")
