@@ -25,24 +25,233 @@ st.set_page_config(
 
 st.markdown("""
 <style>
-.gate-box {
-    text-align: center; padding: 3rem 1rem 2rem;
+/* ═══════════════════════════════════════════════
+   DARK THEME — Gleamy Editorial Style
+   Background: #0A0A0A · Text: #FFF · Accent: #FF6B00
+═══════════════════════════════════════════════ */
+
+/* ── Global ── */
+html, body,
+[data-testid="stApp"],
+.stApp {
+    background-color: #0A0A0A !important;
+    color: #E0E0E0 !important;
 }
-.gate-title {
-    font-size: 2rem; font-weight: bold; margin-bottom: 0.5rem;
+.main .block-container {
+    background-color: #0A0A0A !important;
+    padding-top: 1.5rem;
 }
-.gate-sub {
-    color: #6b7280; font-size: 0.95rem;
+
+/* ── Top header / toolbar ── */
+[data-testid="stHeader"],
+[data-testid="stToolbar"] {
+    background-color: #0A0A0A !important;
+    border-bottom: 1px solid #1E1E1E !important;
 }
+
+/* ── Sidebar ── */
+section[data-testid="stSidebar"] {
+    background-color: #111111 !important;
+    border-right: 1px solid #1E1E1E !important;
+}
+section[data-testid="stSidebar"] *,
+section[data-testid="stSidebar"] p,
+section[data-testid="stSidebar"] label,
+section[data-testid="stSidebar"] span {
+    color: #B0B0B0 !important;
+}
+section[data-testid="stSidebar"] strong {
+    color: #FFFFFF !important;
+}
+section[data-testid="stSidebar"] .stCaption,
+section[data-testid="stSidebar"] [data-testid="stCaptionContainer"] {
+    color: #555555 !important;
+}
+section[data-testid="stSidebar"] hr {
+    border-color: #222222 !important;
+}
+
+/* ── Headings ── */
+h1, h2, h3, h4, h5 {
+    color: #FFFFFF !important;
+    font-weight: 800 !important;
+    letter-spacing: -0.02em !important;
+}
+h1 { font-size: 2.2rem !important; }
+h3 { font-size: 1.1rem !important; }
+
+/* ── Divider ── */
+hr {
+    border: none !important;
+    border-top: 1px solid #1E1E1E !important;
+    margin: 1rem 0 !important;
+}
+
+/* ── Paragraphs / captions ── */
+p, .stMarkdown p { color: #C0C0C0 !important; }
+.stCaption, [data-testid="stCaptionContainer"],
+.stCaption > p, [data-testid="stCaptionContainer"] > p {
+    color: #555555 !important;
+}
+
+/* ── Step Number Badge ── */
 .step-num {
     display: inline-block;
-    background: #ff2442; color: white;
-    border-radius: 50%; width: 26px; height: 26px;
+    background: #FF6B00;
+    color: #000000 !important;
+    border-radius: 50%;
+    width: 26px; height: 26px;
     text-align: center; line-height: 26px;
-    font-size: 0.85rem; font-weight: bold;
-    margin-right: 6px;
+    font-size: 0.85rem; font-weight: 900;
+    margin-right: 8px;
+    vertical-align: middle;
 }
-/* 文件上传器汉化 */
+
+/* ── Buttons ── */
+.stButton > button {
+    background-color: #1A1A1A !important;
+    color: #B0B0B0 !important;
+    border: 1px solid #2A2A2A !important;
+    border-radius: 8px !important;
+    transition: border-color 0.15s, color 0.15s;
+}
+.stButton > button:hover {
+    border-color: #FF6B00 !important;
+    color: #FF6B00 !important;
+    background-color: #1A1A1A !important;
+}
+.stButton > button[kind="primary"] {
+    background-color: #FF6B00 !important;
+    color: #000000 !important;
+    border: none !important;
+    font-weight: 700 !important;
+}
+.stButton > button[kind="primary"]:hover {
+    background-color: #FF8C33 !important;
+    color: #000000 !important;
+}
+.stButton > button:disabled {
+    background-color: #1A1A1A !important;
+    color: #333333 !important;
+    border-color: #1A1A1A !important;
+}
+
+/* ── Download Button ── */
+[data-testid="stDownloadButton"] > button {
+    background-color: #1A1A1A !important;
+    color: #B0B0B0 !important;
+    border: 1px solid #2A2A2A !important;
+    border-radius: 8px !important;
+}
+[data-testid="stDownloadButton"] > button:hover {
+    border-color: #FF6B00 !important;
+    color: #FF6B00 !important;
+}
+
+/* ── Text Inputs / Text Areas ── */
+.stTextInput input,
+.stTextArea textarea {
+    background-color: #141414 !important;
+    color: #FFFFFF !important;
+    border: 1px solid #2A2A2A !important;
+    border-radius: 8px !important;
+    caret-color: #FF6B00;
+}
+.stTextInput input:focus,
+.stTextArea textarea:focus {
+    border-color: #FF6B00 !important;
+    box-shadow: 0 0 0 2px rgba(255,107,0,0.12) !important;
+    outline: none !important;
+}
+.stTextInput input::placeholder,
+.stTextArea textarea::placeholder {
+    color: #444444 !important;
+}
+.stTextInput label,
+.stTextArea label {
+    color: #888888 !important;
+    font-size: 0.85rem !important;
+}
+
+/* ── Selectbox ── */
+.stSelectbox > div > div[data-baseweb="select"] > div {
+    background-color: #141414 !important;
+    color: #FFFFFF !important;
+    border: 1px solid #2A2A2A !important;
+    border-radius: 8px !important;
+}
+.stSelectbox label { color: #888888 !important; }
+.stSelectbox svg { fill: #555555 !important; }
+
+/* ── Expander ── */
+[data-testid="stExpander"] {
+    border: 1px solid #222222 !important;
+    border-radius: 10px !important;
+    overflow: hidden;
+    background-color: #111111 !important;
+}
+[data-testid="stExpander"] summary {
+    background-color: #141414 !important;
+    color: #CCCCCC !important;
+    padding: 10px 14px !important;
+}
+[data-testid="stExpander"] summary:hover {
+    color: #FF6B00 !important;
+}
+[data-testid="stExpander"] svg { fill: #555555 !important; }
+.streamlit-expanderContent {
+    background-color: #111111 !important;
+}
+
+/* ── Alerts ── */
+[data-testid="stAlert"] {
+    border-radius: 8px !important;
+    border-width: 0 0 0 3px !important;
+    border-style: solid !important;
+    background-color: #141414 !important;
+    color: #CCCCCC !important;
+}
+[data-testid="stAlert"] p,
+[data-testid="stAlert"] div,
+[data-testid="stAlert"] span {
+    color: inherit !important;
+}
+/* success */
+[data-testid="stAlert"][data-baseweb="notification"] {
+    background-color: #141414 !important;
+}
+
+/* ── Progress Bar ── */
+[data-testid="stProgressBar"] > div {
+    background-color: #1E1E1E !important;
+    border-radius: 4px !important;
+}
+[data-testid="stProgressBar"] > div > div {
+    background-color: #FF6B00 !important;
+    border-radius: 4px !important;
+}
+
+/* ── Code / Pre ── */
+.stCode, [data-testid="stCode"],
+code, pre {
+    background-color: #141414 !important;
+    color: #888888 !important;
+    border: 1px solid #222222 !important;
+    border-radius: 6px !important;
+}
+
+/* ── File Uploader ── */
+[data-testid="stFileUploader"],
+[data-testid="stFileUploaderDropzone"] {
+    background-color: #141414 !important;
+    border: 1px dashed #2A2A2A !important;
+    border-radius: 10px !important;
+}
+[data-testid="stFileUploader"] label {
+    color: #888888 !important;
+}
+
+/* File uploader 汉化 */
 [data-testid="stFileUploaderDropzoneInstructions"] > div > span {
     font-size: 0 !important;
     line-height: 0;
@@ -51,6 +260,7 @@ st.markdown("""
     content: "拖拽图片到此处";
     font-size: 0.875rem;
     line-height: 1.4;
+    color: #888888;
 }
 [data-testid="stFileUploaderDropzoneInstructions"] small {
     font-size: 0 !important;
@@ -58,7 +268,7 @@ st.markdown("""
 [data-testid="stFileUploaderDropzoneInstructions"] small::after {
     content: "支持 JPG / JPEG / PNG / WEBP，单文件最大 20MB";
     font-size: 0.75rem;
-    color: #6b7280;
+    color: #555555;
 }
 [data-testid="stFileUploaderDropzone"] button span {
     font-size: 0 !important;
@@ -67,6 +277,44 @@ st.markdown("""
     content: "选择文件";
     font-size: 0.875rem;
 }
+
+/* ── Gate Box (邀请码页) ── */
+.gate-box {
+    text-align: center;
+    padding: 4rem 1rem 2.5rem;
+}
+.gate-title {
+    font-size: 2.8rem;
+    font-weight: 900;
+    margin-bottom: 0.5rem;
+    color: #FFFFFF;
+    letter-spacing: -0.04em;
+    line-height: 1.1;
+}
+.gate-accent {
+    color: #FF6B00;
+}
+.gate-sub {
+    color: #444444;
+    font-size: 0.85rem;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    margin-top: 0.5rem;
+}
+
+/* ── Spinner ── */
+[data-testid="stSpinner"] > div {
+    border-top-color: #FF6B00 !important;
+}
+
+/* ── Image captions ── */
+[data-testid="stImage"] p { color: #555555 !important; font-size: 0.75rem !important; }
+
+/* ── Scrollbar ── */
+::-webkit-scrollbar { width: 5px; height: 5px; }
+::-webkit-scrollbar-track { background: #0A0A0A; }
+::-webkit-scrollbar-thumb { background: #2A2A2A; border-radius: 3px; }
+::-webkit-scrollbar-thumb:hover { background: #3A3A3A; }
 </style>
 """, unsafe_allow_html=True)
 
@@ -1049,7 +1297,7 @@ def make_zip(title: str, text: str, images: list) -> io.BytesIO:
 if not st.session_state.authed:
     st.markdown("""
     <div class="gate-box">
-        <div class="gate-title">📱 小红书内容 Agent</div>
+        <div class="gate-title">小红书<span class="gate-accent">内容</span> Agent</div>
         <div class="gate-sub">内测版本 · 请输入邀请码进入</div>
     </div>
     """, unsafe_allow_html=True)
@@ -1132,7 +1380,11 @@ with st.sidebar:
 # ═══════════════════════════════════════════════════════
 #  页面2：行业选择（8个，2行×4列）
 # ═══════════════════════════════════════════════════════
-st.title("📱 小红书内容 Agent")
+st.markdown(
+    "<h1 style='margin-bottom:0; font-size:2rem; font-weight:900; "
+    "letter-spacing:-0.03em;'>小红书<span style='color:#FF6B00;'>内容</span> Agent</h1>",
+    unsafe_allow_html=True,
+)
 st.caption("选择行业 → 选择工作方式 → AI 生成专业笔记 → 图片处理 → 一键下载")
 st.divider()
 
@@ -1146,20 +1398,21 @@ for row_keys in rows:
     for col, ikey in zip(cols, row_keys):
         info = INDUSTRIES[ikey]
         selected = st.session_state.industry_id == ikey
-        border_color = "#ff2442" if selected else "#e5e7eb"
-        bg_color = "#fff5f6" if selected else "white"
+        border_color = "#FF6B00" if selected else "#222222"
+        bg_color = "#1E1207" if selected else "#141414"
         check = " ✓" if selected else ""
+        name_color = "#FF6B00" if selected else "#FFFFFF"
         with col:
             st.markdown(
                 f"""
                 <div style="border:2px solid {border_color}; border-radius:12px;
                             padding:14px 10px; text-align:center; background:{bg_color};
-                            min-height:110px;">
+                            min-height:110px; transition:border-color 0.2s;">
                     <div style="font-size:1.8rem;">{info['label'].split()[0]}</div>
-                    <div style="font-weight:bold; margin-top:4px; font-size:0.9rem;">
+                    <div style="font-weight:700; margin-top:4px; font-size:0.9rem; color:{name_color};">
                         {info['label'].split(' ', 1)[1]}{check}
                     </div>
-                    <div style="font-size:0.72rem; color:#6b7280; margin-top:3px;">{info['desc']}</div>
+                    <div style="font-size:0.72rem; color:#555555; margin-top:3px;">{info['desc']}</div>
                 </div>
                 """,
                 unsafe_allow_html=True,
@@ -1203,18 +1456,20 @@ if not st.session_state.selected_mode:
     with col_a:
         st.markdown(
             """
-            <div style="border:2px solid #3b82f6; border-radius:14px; padding:20px 16px; min-height:200px;">
+            <div style="border:2px solid #FF6B00; border-radius:14px; padding:20px 16px;
+                        min-height:210px; background:#1A1207;">
             <div style="font-size:2rem; text-align:center;">📋</div>
-            <div style="font-weight:bold; text-align:center; font-size:1rem; margin:8px 0; color:#1d4ed8;">
+            <div style="font-weight:800; text-align:center; font-size:1rem; margin:8px 0;
+                        color:#FF6B00; letter-spacing:0.02em;">
                 竞品参考模式
             </div>
-            <ul style="font-size:0.83rem; color:#374151; padding-left:18px; margin:0 0 10px 0;">
+            <ul style="font-size:0.83rem; color:#999999; padding-left:18px; margin:0 0 12px 0; line-height:1.8;">
                 <li>粘贴竞品小红书笔记链接</li>
                 <li>AI 拆解爆文结构</li>
                 <li>自动改写成你的风格</li>
                 <li>图片去水印 / 去文字</li>
             </ul>
-            <div style="font-size:0.75rem; color:#6b7280;">
+            <div style="font-size:0.75rem; color:#555555;">
                 💡 适合：参考同行爆文、快速出内容
             </div>
             </div>
@@ -1222,30 +1477,32 @@ if not st.session_state.selected_mode:
             unsafe_allow_html=True,
         )
         st.markdown(
-            "<div style='background:#eff6ff; border-radius:8px; padding:6px 10px; "
-            "font-size:0.78rem; color:#1d4ed8; margin-top:4px;'>"
-            "✅ 文案改写：免费 &nbsp;|&nbsp; ✅ 图片去水印：免费</div>",
+            "<div style='background:#1A1207; border:1px solid #2A2A2A; border-radius:8px; "
+            "padding:6px 10px; font-size:0.78rem; color:#FF8C33; margin-top:4px;'>"
+            "🆓 文案改写：免费 &nbsp;·&nbsp; 🆓 图片去水印：免费</div>",
             unsafe_allow_html=True,
         )
-        if st.button("选择竞品参考模式", key="mode_sel_a", type="primary", use_container_width=True):
+        if st.button("选择竞品参考模式 →", key="mode_sel_a", type="primary", use_container_width=True):
             st.session_state.selected_mode = "rewrite"
             st.rerun()
 
     with col_b:
         st.markdown(
             """
-            <div style="border:2px solid #10b981; border-radius:14px; padding:20px 16px; min-height:200px;">
+            <div style="border:2px solid #00C896; border-radius:14px; padding:20px 16px;
+                        min-height:210px; background:#071A13;">
             <div style="font-size:2rem; text-align:center;">✨</div>
-            <div style="font-weight:bold; text-align:center; font-size:1rem; margin:8px 0; color:#065f46;">
+            <div style="font-weight:800; text-align:center; font-size:1rem; margin:8px 0;
+                        color:#00C896; letter-spacing:0.02em;">
                 原创生成模式
             </div>
-            <ul style="font-size:0.83rem; color:#374151; padding-left:18px; margin:0 0 10px 0;">
+            <ul style="font-size:0.83rem; color:#999999; padding-left:18px; margin:0 0 12px 0; line-height:1.8;">
                 <li>填写你的店铺 / 业务信息</li>
                 <li>AI 根据今日主题创作文案</li>
                 <li>美化真实照片（免费）</li>
                 <li>AI 生成配图（免费版 / Pro精品版）</li>
             </ul>
-            <div style="font-size:0.75rem; color:#6b7280;">
+            <div style="font-size:0.75rem; color:#555555;">
                 💡 适合：发原创内容、建立品牌形象
             </div>
             </div>
@@ -1253,12 +1510,12 @@ if not st.session_state.selected_mode:
             unsafe_allow_html=True,
         )
         st.markdown(
-            "<div style='background:#f0fdf4; border-radius:8px; padding:6px 10px; "
-            "font-size:0.78rem; color:#065f46; margin-top:4px;'>"
-            "✅ 文案创作：免费 &nbsp;|&nbsp; ✅ 免费AI配图 &nbsp;|&nbsp; ⭐ Pro精品配图（50次/账号）</div>",
+            "<div style='background:#071A13; border:1px solid #2A2A2A; border-radius:8px; "
+            "padding:6px 10px; font-size:0.78rem; color:#00C896; margin-top:4px;'>"
+            "🆓 文案创作：免费 &nbsp;·&nbsp; 🆓 免费AI配图 &nbsp;·&nbsp; ⭐ Pro精品配图（50次/账号）</div>",
             unsafe_allow_html=True,
         )
-        if st.button("选择原创生成模式", key="mode_sel_b", use_container_width=True):
+        if st.button("选择原创生成模式 →", key="mode_sel_b", use_container_width=True):
             st.session_state.selected_mode = "create"
             st.rerun()
 
@@ -1271,7 +1528,16 @@ mode_label = "📋 竞品参考模式" if mode == "rewrite" else "✨ 原创生�
 
 col_status, col_switch = st.columns([4, 1])
 with col_status:
-    st.success(f"行业：**{industry['label']}** · **{mode_label}** · 城市：**{st.session_state.city}**")
+    st.markdown(
+        f"<div style='background:#1A1207; border:1px solid #FF6B00; border-radius:8px; "
+        f"padding:10px 14px; font-size:0.88rem; color:#FF8C33;'>"
+        f"<strong style='color:#FF6B00;'>✓</strong>&ensp;"
+        f"<strong style='color:#FFFFFF;'>{industry['label']}</strong>"
+        f"&ensp;·&ensp;{mode_label}"
+        f"&ensp;·&ensp;<span style='color:#888888;'>{st.session_state.city}</span>"
+        f"</div>",
+        unsafe_allow_html=True,
+    )
 with col_switch:
     if st.button("切换模式", use_container_width=True):
         st.session_state.selected_mode = None
