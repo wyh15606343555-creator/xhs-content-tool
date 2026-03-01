@@ -759,7 +759,7 @@ _DEFAULTS = dict(
     invite_code="",
     industry_id=None,
     selected_mode=None,    # "rewrite" 或 "create"，由用户选择
-    city="北京",
+    city="",
     # Mode A：竞品参考
     note_title="",
     note_text="",
@@ -1330,23 +1330,20 @@ with st.sidebar:
     st.markdown(f"**欢迎测试！** `{st.session_state.invite_code}`")
     st.divider()
 
-    st.markdown("**📍 所在区域**")
-    _JINAN_DISTRICTS = [
-        "济南·历下区", "济南·市中区", "济南·槐荫区", "济南·天桥区",
-        "济南·历城区", "济南·长清区", "济南·章丘区", "济南·济阳区",
-        "济南·莱芜区", "济南·钢城区", "济南·平阴县", "济南·商河县",
-    ]
-    _city_idx = (
-        _JINAN_DISTRICTS.index(st.session_state.city)
-        if st.session_state.city in _JINAN_DISTRICTS else 0
-    )
-    st.session_state.city = st.selectbox(
-        "选择区域",
-        _JINAN_DISTRICTS,
-        index=_city_idx,
+    st.markdown("**📍 所在城市/区域**")
+    _city_input = st.text_input(
+        "城市区域",
+        value=st.session_state.city,
+        placeholder="如：北京·朝阳区 / 上海·徐汇区 / 济南·历下区",
         label_visibility="collapsed",
+        max_chars=30,
     )
-    st.caption("⚠️ 测试阶段仅支持济南，后期将支持全国")
+    if _city_input.strip():
+        st.session_state.city = _city_input.strip()
+    if st.session_state.city:
+        st.caption(f"✓ 已设置：{st.session_state.city}")
+    else:
+        st.caption("填写后，AI 生成的文案会自动融入本地元素")
 
     st.divider()
 
