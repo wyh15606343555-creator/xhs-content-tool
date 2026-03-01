@@ -355,6 +355,7 @@ _DEFAULTS = dict(
     store_profile={},      # {field_key: value}
     daily_brief="",
     create_images=[],      # 用户上传的自己的图片
+    dynamic_image_prompt="",   # Mode B 根据文案内容动态生成的图片处理提示词
     feedback_submitted=False,
 )
 for _k, _v in _DEFAULTS.items():
@@ -632,6 +633,41 @@ def generate_original_content(store_profile: dict, brief: str, industry: dict, c
     return resp.choices[0].message.content
 
 
+def generate_dynamic_image_prompt(copy_text: str, industry: dict) -> str:
+    """Mode B：根据已生成的文案，动态生成 Gemini 图片处理提示词。
+
+    逻辑：用 DeepSeek 分析文案的情绪/场景/风格关键词，
+    生成一段英文 Gemini 提示词，指导图片在光线/色调/氛围上
+    与文案内容匹配（不改变主体构图，不生成新内容）。
+    """
+    from openai import OpenAI
+    api_key = _get_api_key("DEEPSEEK_API_KEY")
+    client = OpenAI(api_key=api_key, base_url="https://api.deepseek.com")
+
+    system = (
+        "You are an expert at writing Gemini image editing prompts for social media content.\n"
+        "Given a Chinese XiaoHongShu (RedNote) post, write a concise English image enhancement prompt.\n\n"
+        "Rules:\n"
+        "1. Extract 2-3 visual mood keywords from the post (e.g. warm, cozy, vibrant, elegant, fresh, moody, bright).\n"
+        "2. Adjust lighting, color tone, and atmosphere to MATCH the post's emotional style.\n"
+        "3. Do NOT change the main subject, composition, or add new elements.\n"
+        "4. Always include: 'Remove any text overlays or watermarks.'\n"
+        "5. Keep the result realistic and natural — not AI-generated looking.\n"
+        "6. Output: 3-5 English sentences only. No Chinese, no explanations.\n\n"
+        f"Industry: {industry['label']}"
+    )
+    resp = client.chat.completions.create(
+        model="deepseek-chat",
+        messages=[
+            {"role": "system", "content": system},
+            {"role": "user", "content": f"Post content:\n{copy_text[:600]}"},
+        ],
+        temperature=0.4,
+        max_tokens=200,
+    )
+    return resp.choices[0].message.content.strip()
+
+
 def edit_image_with_gemini(image: Image.Image, prompt: str):
     """调用 Gemini 编辑/美化图片，返回 (PIL.Image | None, error_msg)"""
     try:
@@ -740,13 +776,23 @@ with st.sidebar:
     st.markdown(f"**欢迎测试！** `{st.session_state.invite_code}`")
     st.divider()
 
-    st.markdown("**📍 你的城市**")
-    st.session_state.city = st.text_input(
-        "城市",
-        value=st.session_state.city,
-        label_visibility="collapsed",
-        placeholder="输入城市名，如：上海",
+    st.markdown("**📍 所在区域**")
+    _JINAN_DISTRICTS = [
+        "济南·历下区", "济南·市中区", "济南·槐荫区", "济南·天桥区",
+        "济南·历城区", "济南·长清区", "济南·章丘区", "济南·济阳区",
+        "济南·莱芜区", "济南·钢城区", "济南·平阴县", "济南·商河县",
+    ]
+    _city_idx = (
+        _JINAN_DISTRICTS.index(st.session_state.city)
+        if st.session_state.city in _JINAN_DISTRICTS else 0
     )
+    st.session_state.city = st.selectbox(
+        "选择区域",
+        _JINAN_DISTRICTS,
+        index=_city_idx,
+        label_visibility="collapsed",
+    )
+    st.caption("⚠️ 此项目为测试阶段，当前仅支持济南市内各区\n后期将增设全国各地域")
 
     st.divider()
     st.caption("Demo v4.0 · 内测版\n\n遇到问题请截图反馈给 David")
@@ -815,6 +861,7 @@ for row_keys in rows:
                 st.session_state.store_profile = {}
                 st.session_state.daily_brief = ""
                 st.session_state.create_images = []
+                st.session_state.dynamic_image_prompt = ""
                 st.rerun()
 
 if not st.session_state.industry_id:
@@ -985,7 +1032,17 @@ else:
     )
     st.session_state.daily_brief = brief
 
-    st.markdown("**📷 上传你的图片（自己拍的，必须是自己店铺/产品的照片）**")
+    st.markdown("**📷 上传你的图片**")
+    with st.expander("📌 拍摄要求（点击查看）", expanded=False):
+        st.markdown(
+            "- **竖拍为主**：9:16 比例最佳，与小红书全屏浏览一致\n"
+            "- **光线充足**：自然光最佳，避免过暗或逆光模糊\n"
+            "- **突出主体**：食物/产品/环境/人物居中，背景尽量简洁\n"
+            "- **保持真实**：无需提前加滤镜，AI 会自动根据文案氛围美化\n"
+            "- **清晰不模糊**：避免手抖，可借助三脚架或靠墙稳定\n"
+            "- **建议数量**：3~9 张，覆盖不同角度或细节\n\n"
+            "⚠️ 必须是自己店铺/产品的真实照片，不可使用竞品或网络图片"
+        )
     uploaded_imgs = st.file_uploader(
         "上传图片",
         type=["jpg", "jpeg", "png", "webp"],
@@ -1020,6 +1077,7 @@ else:
             st.session_state.images_done = False
             st.session_state.rewrite_result = ""
             st.session_state.edited_images = []
+            st.session_state.dynamic_image_prompt = ""
             st.rerun()
 
     if st.session_state.content_ready and mode == "create":
@@ -1079,6 +1137,13 @@ if st.session_state.content_ready:
                         )
                     st.session_state.rewrite_result = result
                     st.session_state.rewrite_done = True
+                    # Mode B：根据生成的文案内容，动态生成匹配的图片处理提示词
+                    if mode == "create":
+                        try:
+                            dp = generate_dynamic_image_prompt(result, industry)
+                            st.session_state.dynamic_image_prompt = dp
+                        except Exception:
+                            st.session_state.dynamic_image_prompt = ""
                     st.rerun()
                 except Exception as e:
                     st.error(f"生成失败：{e}")
@@ -1108,15 +1173,28 @@ if st.session_state.rewrite_done and st.session_state.note_images:
         btn3_label = "🎨 一键重绘图片"
         img_tip = "去除竞品水印和文字，图片内容保持不变"
     else:
-        step3_title = "图片美化（提升质量 · 优化光影）"
+        step3_title = "图片智能美化（匹配文案氛围）"
         btn3_label = "🎨 一键美化图片"
-        img_tip = "AI 提升你的图片质量，更适合小红书发布"
+        img_tip = "AI 分析文案情绪，自动匹配光影/色调/氛围风格 — 注意：调整的是图片质感，不生成新场景"
+
+    # 确定本次图片处理使用的提示词
+    # Mode B 优先使用根据文案动态生成的提示词；Mode A 使用行业静态提示词
+    img_prompt = (
+        st.session_state.dynamic_image_prompt
+        if (mode == "create" and st.session_state.dynamic_image_prompt)
+        else industry["image_prompt"]
+    )
 
     st.markdown(f'<span class="step-num">3</span> **{step3_title}**', unsafe_allow_html=True)
     st.caption(img_tip)
 
-    with st.expander("查看图片处理提示词", expanded=False):
-        st.code(industry["image_prompt"], language=None)
+    with st.expander("查看图片处理方案", expanded=False):
+        if mode == "create" and st.session_state.dynamic_image_prompt:
+            st.markdown("**AI 根据文案内容生成的专属美化指令：**")
+            st.info(st.session_state.dynamic_image_prompt)
+            st.caption("DeepSeek 分析了你的文案情绪和场景关键词，自动生成了最匹配的 Gemini 图片处理指令")
+        else:
+            st.code(img_prompt, language=None)
 
     if st.button(btn3_label, type="primary", key="btn_img"):
         n = len(st.session_state.note_images)
@@ -1126,7 +1204,7 @@ if st.session_state.rewrite_done and st.session_state.note_images:
 
         for i, img in enumerate(st.session_state.note_images):
             prog2.progress(i / n, text=f"正在处理第 {i+1}/{n} 张…")
-            result_img, err_msg = edit_image_with_gemini(img, industry["image_prompt"])
+            result_img, err_msg = edit_image_with_gemini(img, img_prompt)
             edited.append(result_img)
             if err_msg:
                 errors.append(f"图片 {i+1}：{err_msg}")
@@ -1173,7 +1251,7 @@ if st.session_state.rewrite_done and st.session_state.note_images:
                     if ed is None:
                         prog3.progress(i / len(st.session_state.note_images),
                                        text=f"重试第 {i+1} 张…")
-                        new_img, _ = edit_image_with_gemini(img, industry["image_prompt"])
+                        new_img, _ = edit_image_with_gemini(img, img_prompt)
                         if new_img:
                             st.session_state.edited_images[i] = new_img
                 prog3.progress(1.0, text="重试完成")
