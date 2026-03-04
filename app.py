@@ -13,11 +13,13 @@ from PIL import Image
 from config import (
     INDUSTRIES, INDUSTRY_ICONS, ICON_ATTRS, DEFAULTS,
     PRO_GEN_LIMIT, ADMIN_CODES,
+    SUBSCRIPTION_PLANS, PAYMENT_CONTACT_WECHAT,
 )
 from utils import (
     init_db, log_event, save_generation, get_history, get_db,
     friendly_api_error, img_cols,
     get_pro_used, has_pro_quota, try_use_pro_quota, refund_pro_quota,
+    add_pro_quota,
     check_invite_code, make_zip, make_batch_zip,
 )
 from api import (
@@ -472,12 +474,19 @@ with st.sidebar:
     _pro_left = PRO_GEN_LIMIT - _pro_used
     st.markdown("**⭐ Pro 精品配图额度**")
     if _pro_left > 10:
-        st.success(f"剩余 **{_pro_left}** / {PRO_GEN_LIMIT} 次")
+        st.success(f"剩余 **{_pro_left}** 次")
     elif _pro_left > 0:
-        st.warning(f"剩余 **{_pro_left}** / {PRO_GEN_LIMIT} 次（快用完了）")
+        st.warning(f"剩余 **{_pro_left}** 次（快用完了）")
     else:
-        st.error("Pro 额度已用完")
-        st.caption("联系 David 获取新额度")
+        st.error("免费试用额度已用完")
+        st.caption("👇 订阅会员，解锁更多额度")
+        if SUBSCRIPTION_PLANS:
+            _plan = SUBSCRIPTION_PLANS[0]
+            st.markdown(
+                f"**{_plan['name']}** {_plan['price']}{_plan['unit']}\n\n"
+                f"{_plan['desc']}"
+            )
+        st.caption(f"微信联系充值：{PAYMENT_CONTACT_WECHAT}")
 
     st.caption("")
 
@@ -1495,13 +1504,69 @@ if st.session_state.rewrite_done and (_has_any_images or mode == "create"):
                 )
             else:
                 st.button(
-                    "⭐ Pro 额度已用完",
+                    "⭐ 免费试用额度已用完",
                     key="btn_gen_pro_disabled",
                     disabled=True,
                     use_container_width=True,
                 )
-                st.caption("联系 David 获取新额度")
                 btn_pro = False
+
+        # ── 额度用完：显示付费订阅引导 ──
+        if not _has_quota:
+            st.divider()
+            st.markdown("### 🎉 恭喜你完成了试用体验！")
+            st.markdown(
+                "你已经使用完了 **10次免费试用额度**，"
+                "说明你对我们的 Pro 精品配图很满意！\n\n"
+                "**订阅会员**，继续享受 9:16 竖图 + 高清画质 + 小红书完美适配："
+            )
+
+            # 方案卡片
+            _plan_cols = st.columns(len(SUBSCRIPTION_PLANS))
+            for _pc, _plan in zip(_plan_cols, SUBSCRIPTION_PLANS):
+                with _pc:
+                    _tag = _plan.get("tag", "")
+                    _tag_html = f' <span style="background:#FF2442;color:white;padding:2px 8px;border-radius:10px;font-size:12px;">{_tag}</span>' if _tag else ""
+                    st.markdown(
+                        f"<div style='border:2px solid #FF2442;border-radius:12px;padding:16px;text-align:center;'>"
+                        f"<h4 style='margin:0;'>{_plan['name']}{_tag_html}</h4>"
+                        f"<p style='font-size:28px;font-weight:bold;color:#FF2442;margin:8px 0;'>"
+                        f"¥{_plan['price']}<span style='font-size:14px;color:#86868B;'>/{_plan['unit'].replace('元/', '')}</span></p>"
+                        f"<p style='color:#6E6E73;'>{_plan['desc']}</p>"
+                        f"</div>",
+                        unsafe_allow_html=True,
+                    )
+
+            # 付款方式
+            st.markdown("#### 💳 付款方式")
+
+            # 检查是否有收款码图片
+            from pathlib import Path as _Path
+            _qr_dir = _Path(__file__).parent
+            _wechat_qr = _qr_dir / "payment_qr_wechat.png"
+            _alipay_qr = _qr_dir / "payment_qr_alipay.png"
+
+            if _wechat_qr.exists() or _alipay_qr.exists():
+                _qr_cols = st.columns(2)
+                if _wechat_qr.exists():
+                    with _qr_cols[0]:
+                        st.image(str(_wechat_qr), caption="微信扫码付款", width=200)
+                if _alipay_qr.exists():
+                    with _qr_cols[1]:
+                        st.image(str(_alipay_qr), caption="支付宝扫码付款", width=200)
+            else:
+                st.info(
+                    f"**微信转账充值**：添加微信 **{PAYMENT_CONTACT_WECHAT}**\n\n"
+                    "转账时请备注你的**邀请码**，充值后即刻到账！"
+                )
+
+            st.markdown(
+                "**充值流程**：\n"
+                "1. 扫码添加微信 / 转账\n"
+                "2. 备注你的邀请码（当前：`" + st.session_state.invite_code + "`）\n"
+                "3. 确认收款后，额度秒到账\n"
+            )
+            st.divider()
 
         # 免费版生图
         if btn_free or btn_regen_free:
@@ -1968,7 +2033,7 @@ if st.session_state.invite_code in ADMIN_CODES:
                 {
                     "邀请码": q["invite_code"],
                     "已使用": q["pro_gen_used"],
-                    "上限": PRO_GEN_LIMIT,
+                    "免费额度": PRO_GEN_LIMIT,
                     "剩余": max(PRO_GEN_LIMIT - q["pro_gen_used"], 0),
                     "最后使用": q["updated_at"][:16] if q["updated_at"] else "—",
                 }
@@ -1977,6 +2042,34 @@ if st.session_state.invite_code in ADMIN_CODES:
             st.dataframe(df_quota, use_container_width=True, hide_index=True)
         else:
             st.caption("暂无数据")
+
+        # ══════════════ 充值管理 ══════════════
+        st.markdown("### 💰 充值管理")
+        st.caption("用户付款后，在此为其增加 Pro 额度")
+        with st.form("admin_recharge_form"):
+            _rc_code = st.text_input("用户邀请码", placeholder="输入用户的邀请码")
+            _rc_amount = st.number_input("充值额度（次数）", min_value=1, max_value=1000, value=100, step=10)
+            _rc_note = st.text_input("备注（可选）", placeholder="如：月度会员 3月")
+            _rc_submit = st.form_submit_button("确认充值", type="primary")
+            if _rc_submit:
+                if not _rc_code.strip():
+                    st.error("请输入用户邀请码")
+                else:
+                    _rc_code_upper = _rc_code.strip().upper()
+                    _before = get_pro_used(_rc_code_upper)
+                    if add_pro_quota(_rc_code_upper, _rc_amount):
+                        _after = get_pro_used(_rc_code_upper)
+                        st.success(
+                            f"充值成功！ 邀请码 **{_rc_code_upper}** "
+                            f"已增加 {_rc_amount} 次额度\n\n"
+                            f"已使用：{_before} → {_after}"
+                        )
+                        log_event(
+                            st.session_state.invite_code, "admin_recharge",
+                            detail=f"target={_rc_code_upper} amount={_rc_amount} note={_rc_note}",
+                        )
+                    else:
+                        st.error("充值失败，请重试")
 
         # ══════════════ 最近反馈 ══════════════
         st.markdown("### 💬 最近反馈")

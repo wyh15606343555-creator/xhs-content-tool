@@ -273,6 +273,27 @@ def refund_pro_quota(code: str):
             conn.close()
 
 
+def add_pro_quota(code: str, amount: int) -> bool:
+    """管理员为用户增加 Pro 配额（减少 pro_gen_used）"""
+    conn = None
+    try:
+        conn = _get_db()
+        conn.execute(
+            "INSERT INTO quota_usage (invite_code, pro_gen_used, updated_at) "
+            "VALUES (?, 0, datetime('now')) "
+            "ON CONFLICT(invite_code) DO UPDATE SET "
+            "pro_gen_used = MAX(pro_gen_used - ?, 0), updated_at = datetime('now')",
+            (code.upper(), amount),
+        )
+        conn.commit()
+        return True
+    except sqlite3.Error:
+        return False
+    finally:
+        if conn:
+            conn.close()
+
+
 # ═══════════════════════════════════════════════════════
 #  认证 & API Key
 # ═══════════════════════════════════════════════════════
