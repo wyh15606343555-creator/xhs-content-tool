@@ -811,7 +811,7 @@ if mode == "rewrite":
                     for f in extra_imgs:
                         try:
                             downloaded.append(Image.open(f).convert("RGB"))
-                        except Exception:
+                        except (OSError, ValueError):
                             pass
 
                 batch.append({
@@ -906,7 +906,7 @@ if mode == "rewrite":
                         for f in manual_imgs:
                             try:
                                 imgs.append(Image.open(f).convert("RGB"))
-                            except Exception:
+                            except (OSError, ValueError):
                                 pass
                     st.session_state.note_images = imgs
                     st.session_state.batch_results = [{
@@ -1038,7 +1038,7 @@ else:
         for f in uploaded_imgs:
             try:
                 imgs.append(Image.open(f).convert("RGB"))
-            except Exception:
+            except (OSError, ValueError):
                 pass
         if imgs:
             st.session_state.create_images = imgs
@@ -1534,28 +1534,37 @@ if st.session_state.rewrite_done and (_has_any_images or mode == "create"):
             if not try_use_pro_quota(_code_now):
                 st.error("Pro 配额已用完")
             else:
-                with st.status("正在生成Pro精品配图…", expanded=True) as _pro_status:
-                    _pro_status.update(label="Imagen 4 Fast 正在绘制…（约15-30秒）")
-                    imgs, s_prompt, s_err = generate_scene_with_imagen4(
-                        st.session_state.rewrite_result, industry
-                    )
+                _pro_ok = False
+                try:
+                    with st.status("正在生成Pro精品配图…", expanded=True) as _pro_status:
+                        _pro_status.update(label="Imagen 4 Fast 正在绘制…（约15-30秒）")
+                        imgs, s_prompt, s_err = generate_scene_with_imagen4(
+                            st.session_state.rewrite_result, industry
+                        )
+                        if imgs:
+                            _pro_status.update(label="生成完成！", state="complete", expanded=False)
+                        else:
+                            _pro_status.update(label="生成失败", state="error")
                     if imgs:
-                        _pro_status.update(label="生成完成！", state="complete", expanded=False)
+                        st.session_state.scene_images = imgs
+                        st.session_state.scene_prompt = s_prompt
+                        st.session_state["scene_tier"] = "pro"
+                        log_event(st.session_state.invite_code, "generate_scene_pro",
+                                   st.session_state.industry_id, mode)
+                        new_left = _pro_left_now - 1
+                        st.success(f"生成成功！共 {len(imgs)} 张 · 9:16 竖图 · Pro 剩余 {new_left}/{PRO_GEN_LIMIT} 次")
+                        _pro_ok = True
                     else:
-                        _pro_status.update(label="生成失败", state="error")
-                if imgs:
-                    st.session_state.scene_images = imgs
-                    st.session_state.scene_prompt = s_prompt
-                    st.session_state["scene_tier"] = "pro"
+                        st.error(f"生成失败：{s_err}")
+                        log_event(st.session_state.invite_code, "generate_scene_pro",
+                                   st.session_state.industry_id, mode, detail=s_err, success=False)
+                except Exception as _pro_exc:
+                    st.error(f"生成异常：{friendly_api_error(_pro_exc)}")
                     log_event(st.session_state.invite_code, "generate_scene_pro",
-                               st.session_state.industry_id, mode)
-                    new_left = _pro_left_now - 1
-                    st.success(f"生成成功！共 {len(imgs)} 张 · 9:16 竖图 · Pro 剩余 {new_left}/{PRO_GEN_LIMIT} 次")
-                else:
-                    refund_pro_quota(_code_now)
-                    log_event(st.session_state.invite_code, "generate_scene_pro",
-                               st.session_state.industry_id, mode, detail=s_err, success=False)
-                    st.error(f"生成失败：{s_err}")
+                               st.session_state.industry_id, mode, detail=str(_pro_exc)[:200], success=False)
+                finally:
+                    if not _pro_ok:
+                        refund_pro_quota(_code_now)
                 st.rerun()
 
         if st.session_state.scene_images:
@@ -1765,6 +1774,7 @@ if st.session_state.rewrite_done and not st.session_state.feedback_submitted:
         )
         submitted = st.form_submit_button("提交反馈", type="primary")
         if submitted:
+            conn = None
             try:
                 conn = get_db()
                 rating_text = rating.split(" ", 1)[-1] if " " in rating else rating
@@ -1775,9 +1785,11 @@ if st.session_state.rewrite_done and not st.session_state.feedback_submitted:
                      st.session_state.get("industry_id", ""), st.session_state.get("selected_mode", "")),
                 )
                 conn.commit()
-                conn.close()
             except Exception:
                 pass
+            finally:
+                if conn:
+                    conn.close()
             log_event(st.session_state.invite_code, "feedback",
                        st.session_state.get("industry_id", ""), st.session_state.get("selected_mode", ""))
             st.session_state.feedback_submitted = True
@@ -1795,6 +1807,7 @@ if st.session_state.invite_code in ADMIN_CODES:
     st.markdown("## 📊 数据分析面板")
     st.caption("此区域仅管理员可见")
 
+    conn = None
     try:
         conn = get_db()
         _today = datetime.now().strftime("%Y-%m-%d")
@@ -2007,9 +2020,11 @@ if st.session_state.invite_code in ADMIN_CODES:
             else:
                 st.caption("暂无事件")
 
-        conn.close()
     except Exception as e:
         st.error(f"数据库读取失败：{e}")
+    finally:
+        if conn:
+            conn.close()
 
 # ─── 页脚 ───
 st.divider()

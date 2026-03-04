@@ -105,6 +105,7 @@ def init_db():
 def log_event(invite_code: str, event_type: str, industry_id: str = "",
               mode: str = "", detail: str = "", success: bool = True):
     """记录一条事件日志（埋点）"""
+    conn = None
     try:
         conn = _get_db()
         conn.execute(
@@ -113,9 +114,11 @@ def log_event(invite_code: str, event_type: str, industry_id: str = "",
             (invite_code, event_type, industry_id, mode, detail, 1 if success else 0),
         )
         conn.commit()
-        conn.close()
-    except Exception:
+    except sqlite3.Error:
         pass
+    finally:
+        if conn:
+            conn.close()
 
 
 def save_generation(invite_code: str, industry_id: str, mode: str,
@@ -123,6 +126,7 @@ def save_generation(invite_code: str, industry_id: str, mode: str,
                     output_text: str, image_count: int = 0, image_tier: str = "",
                     city: str = ""):
     """保存一次生成记录"""
+    conn = None
     try:
         conn = _get_db()
         conn.execute(
@@ -134,13 +138,16 @@ def save_generation(invite_code: str, industry_id: str, mode: str,
              output_text, image_count, image_tier, city),
         )
         conn.commit()
-        conn.close()
-    except Exception:
+    except sqlite3.Error:
         pass
+    finally:
+        if conn:
+            conn.close()
 
 
 def get_history(invite_code: str, limit: int = 20) -> list:
     """获取某用户最近的生成记录"""
+    conn = None
     try:
         conn = _get_db()
         rows = conn.execute(
@@ -148,10 +155,12 @@ def get_history(invite_code: str, limit: int = 20) -> list:
             "ORDER BY created_at DESC LIMIT ?",
             (invite_code, limit),
         ).fetchall()
-        conn.close()
         return [dict(r) for r in rows]
-    except Exception:
+    except sqlite3.Error:
         return []
+    finally:
+        if conn:
+            conn.close()
 
 
 def get_db():
@@ -193,16 +202,19 @@ def img_cols(count: int) -> int:
 # ═══════════════════════════════════════════════════════
 
 def get_pro_used(code: str) -> int:
+    conn = None
     try:
         conn = _get_db()
         row = conn.execute(
             "SELECT pro_gen_used FROM quota_usage WHERE invite_code = ?",
             (code.upper(),),
         ).fetchone()
-        conn.close()
         return row["pro_gen_used"] if row else 0
-    except Exception:
+    except sqlite3.Error:
         return 0
+    finally:
+        if conn:
+            conn.close()
 
 
 def has_pro_quota(code: str) -> bool:
@@ -211,6 +223,7 @@ def has_pro_quota(code: str) -> bool:
 
 def try_use_pro_quota(code: str) -> bool:
     """原子地检查+扣除1次 Pro 配额，成功返回 True"""
+    conn = None
     try:
         conn = _get_db()
         conn.execute("BEGIN IMMEDIATE")
@@ -221,7 +234,6 @@ def try_use_pro_quota(code: str) -> bool:
         used = row["pro_gen_used"] if row else 0
         if used >= PRO_GEN_LIMIT:
             conn.rollback()
-            conn.close()
             return False
         conn.execute(
             "INSERT INTO quota_usage (invite_code, pro_gen_used, updated_at) "
@@ -231,14 +243,22 @@ def try_use_pro_quota(code: str) -> bool:
             (code.upper(),)
         )
         conn.commit()
-        conn.close()
         return True
-    except Exception:
+    except sqlite3.Error:
+        if conn:
+            try:
+                conn.rollback()
+            except sqlite3.Error:
+                pass
         return False
+    finally:
+        if conn:
+            conn.close()
 
 
 def refund_pro_quota(code: str):
     """生成失败时退回1次 Pro 配额"""
+    conn = None
     try:
         conn = _get_db()
         conn.execute(
@@ -246,9 +266,11 @@ def refund_pro_quota(code: str):
             "WHERE invite_code = ?", (code.upper(),)
         )
         conn.commit()
-        conn.close()
-    except Exception:
+    except sqlite3.Error:
         pass
+    finally:
+        if conn:
+            conn.close()
 
 
 # ═══════════════════════════════════════════════════════
