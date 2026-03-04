@@ -12,6 +12,11 @@ __pycache__/
 dist/
 build/
 
+# ── 数据库 ──
+*.db
+*.db-wal
+*.db-shm
+
 # ── IDE ──
 .vscode/
 .idea/
