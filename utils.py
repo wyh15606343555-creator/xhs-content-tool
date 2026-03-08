@@ -78,6 +78,12 @@ def _init_tables(conn: sqlite3.Connection):
         CREATE INDEX IF NOT EXISTS idx_event_log_code ON event_log(invite_code);
         CREATE INDEX IF NOT EXISTS idx_history_code ON generation_history(invite_code);
     """)
+    # 迁移：为 quota_usage 添加 tier 列（已有表不受影响）
+    try:
+        conn.execute("ALTER TABLE quota_usage ADD COLUMN tier TEXT DEFAULT 'free'")
+        conn.commit()
+    except sqlite3.OperationalError:
+        pass  # 列已存在
     # 一次性迁移旧 /tmp/ 数据（如果存在）
     old_dir = Path(tempfile.gettempdir()) / "xhs_agent_v5_usage"
     if old_dir.exists():
@@ -217,6 +223,23 @@ def get_pro_used(code: str) -> int:
             conn.close()
 
 
+def get_user_tier(code: str) -> str:
+    """获取用户当前会员等级（free/plus/pro/promax）"""
+    conn = None
+    try:
+        conn = _get_db()
+        row = conn.execute(
+            "SELECT tier FROM quota_usage WHERE invite_code = ?",
+            (code.upper(),),
+        ).fetchone()
+        return row["tier"] if row and row["tier"] else "free"
+    except sqlite3.Error:
+        return "free"
+    finally:
+        if conn:
+            conn.close()
+
+
 def has_pro_quota(code: str) -> bool:
     return get_pro_used(code) < PRO_GEN_LIMIT
 
@@ -273,18 +296,27 @@ def refund_pro_quota(code: str):
             conn.close()
 
 
-def add_pro_quota(code: str, amount: int) -> bool:
-    """管理员为用户增加 Pro 配额（减少 pro_gen_used）"""
+def add_pro_quota(code: str, amount: int, tier: str = "") -> bool:
+    """管理员为用户增加配额（减少 pro_gen_used）并可选更新会员等级"""
     conn = None
     try:
         conn = _get_db()
-        conn.execute(
-            "INSERT INTO quota_usage (invite_code, pro_gen_used, updated_at) "
-            "VALUES (?, 0, datetime('now')) "
-            "ON CONFLICT(invite_code) DO UPDATE SET "
-            "pro_gen_used = MAX(pro_gen_used - ?, 0), updated_at = datetime('now')",
-            (code.upper(), amount),
-        )
+        if tier:
+            conn.execute(
+                "INSERT INTO quota_usage (invite_code, pro_gen_used, tier, updated_at) "
+                "VALUES (?, 0, ?, datetime('now')) "
+                "ON CONFLICT(invite_code) DO UPDATE SET "
+                "pro_gen_used = MAX(pro_gen_used - ?, 0), tier = ?, updated_at = datetime('now')",
+                (code.upper(), tier, amount, tier),
+            )
+        else:
+            conn.execute(
+                "INSERT INTO quota_usage (invite_code, pro_gen_used, updated_at) "
+                "VALUES (?, 0, datetime('now')) "
+                "ON CONFLICT(invite_code) DO UPDATE SET "
+                "pro_gen_used = MAX(pro_gen_used - ?, 0), updated_at = datetime('now')",
+                (code.upper(), amount),
+            )
         conn.commit()
         return True
     except sqlite3.Error:

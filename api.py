@@ -271,6 +271,60 @@ def generate_original_content(store_profile: dict, brief: str, industry: dict, c
     return resp.choices[0].message.content
 
 
+# ═══════════════════════════════════════════════════════
+#  Claude 文案生成（企业版专属）
+# ═══════════════════════════════════════════════════════
+
+def rewrite_with_claude(title: str, text: str, industry: dict, city: str) -> str:
+    """企业版 Mode A：调用 Claude 改写竞品文案"""
+    import anthropic
+    api_key = get_api_key("ANTHROPIC_API_KEY")
+    if not api_key:
+        raise ValueError("未配置 ANTHROPIC_API_KEY，请联系管理员")
+    client = anthropic.Anthropic(api_key=api_key)
+    system = industry["system_prompt"] + f"\n\n目标城市：{city}"
+    resp = client.messages.create(
+        model="claude-sonnet-4-20250514",
+        max_tokens=2000,
+        system=system,
+        messages=[
+            {"role": "user", "content": f"原标题：{title}\n\n原正文：{text}"},
+        ],
+        temperature=0.8,
+    )
+    return resp.content[0].text
+
+
+def generate_original_with_claude(store_profile: dict, brief: str, industry: dict, city: str) -> str:
+    """企业版 Mode B：调用 Claude 根据店铺信息生成原创文案"""
+    import anthropic
+    api_key = get_api_key("ANTHROPIC_API_KEY")
+    if not api_key:
+        raise ValueError("未配置 ANTHROPIC_API_KEY，请联系管理员")
+    client = anthropic.Anthropic(api_key=api_key)
+
+    lines = []
+    for field in industry.get("profile_fields", []):
+        val = store_profile.get(field["key"], "").strip()
+        if val:
+            lines.append(f"{field['label']}：{val}")
+    store_info = "\n".join(lines) if lines else "（未填写店铺信息）"
+
+    system = industry["create_system_prompt"] + f"\n\n目标城市：{city}"
+    user_content = f"店铺信息：\n{store_info}\n\n今日发帖主题：{brief}"
+
+    resp = client.messages.create(
+        model="claude-sonnet-4-20250514",
+        max_tokens=2000,
+        system=system,
+        messages=[
+            {"role": "user", "content": user_content},
+        ],
+        temperature=0.85,
+    )
+    return resp.content[0].text
+
+
 def generate_dynamic_image_prompt(copy_text: str, industry: dict) -> str:
     """Mode B：根据已生成的文案，动态生成 Gemini 图片处理提示词"""
     from openai import OpenAI
@@ -321,7 +375,7 @@ def _build_scene_system_prompt(industry: dict, is_pro: bool) -> str:
 
 
 def generate_scene_nano_banana(copy_text: str, industry: dict) -> tuple:
-    """免费档：Gemini 2.5 Flash Image 文生图（1:1方图，500次/天共享额度）
+    """体验版/达人版：Imagen 4 Fast 文生图（9:16竖图）
     返回 (images: list[PIL.Image], scene_prompt: str, error_msg: str)
     """
     from openai import OpenAI
@@ -337,17 +391,17 @@ def generate_scene_nano_banana(copy_text: str, industry: dict) -> tuple:
         ds_resp = ds_client.chat.completions.create(
             model="deepseek-chat",
             messages=[
-                {"role": "system", "content": _build_scene_system_prompt(industry, is_pro=False)},
+                {"role": "system", "content": _build_scene_system_prompt(industry, is_pro=True)},
                 {"role": "user", "content": f"Post content:\n{copy_text[:500]}"},
             ],
             temperature=0.6,
-            max_tokens=150,
+            max_tokens=180,
         )
         scene_prompt = ds_resp.choices[0].message.content.strip()
     except Exception as e:
         return [], "", friendly_api_error(e)
 
-    # Step 2: Gemini 2.5 Flash Image 文生图（调用2次得到2张图）
+    # Step 2: Imagen 4 Fast 文生图（一次请求2张，9:16竖图）
     gai_key = get_api_key("GOOGLE_API_KEY")
     if not gai_key:
         return [], scene_prompt, "未配置 Google API Key"
@@ -355,38 +409,34 @@ def generate_scene_nano_banana(copy_text: str, industry: dict) -> tuple:
     g_client = genai.Client(api_key=gai_key)
     images = []
     last_err = ""
-    for _ in range(2):
-        try:
-            response = g_client.models.generate_content(
-                model="gemini-2.5-flash-image",
-                contents=[scene_prompt],
-                config=types.GenerateContentConfig(
-                    response_modalities=["IMAGE", "TEXT"],
-                ),
-            )
-            if response.candidates:
-                for part in response.candidates[0].content.parts:
-                    if (
-                        hasattr(part, "inline_data")
-                        and part.inline_data
-                        and getattr(part.inline_data, "mime_type", "").startswith("image/")
-                    ):
-                        images.append(Image.open(io.BytesIO(part.inline_data.data)).convert("RGB"))
-                        break
-        except Exception as e:
-            err = str(e)
-            if "quota" in err.lower() or "429" in err:
-                last_err = "免费配图额度已用完（每日500次共享限制），请稍后再试或升级Pro"
-                break
-            last_err = f"生成失败：{err[:120]}"
+    try:
+        response = g_client.models.generate_images(
+            model="imagen-4.0-fast-generate-001",
+            prompt=scene_prompt,
+            config=types.GenerateImagesConfig(
+                number_of_images=2,
+                aspect_ratio="9:16",
+                person_generation="allow_adult",
+            ),
+        )
+        for gen_img in response.generated_images:
+            images.append(Image.open(io.BytesIO(gen_img.image.image_bytes)).convert("RGB"))
+    except Exception as e:
+        err = str(e)
+        if "quota" in err.lower() or "429" in err:
+            last_err = "配图额度已用完，请稍后再试或升级会员"
+        elif "not found" in err.lower() or "404" in err:
+            last_err = "图片引擎暂不可用，请确认 API Key 已开通图片生成权限"
+        else:
+            last_err = f"生成失败：{err[:150]}"
 
     if images:
         return images, scene_prompt, ""
-    return [], scene_prompt, last_err or "Gemini 未返回图片数据"
+    return [], scene_prompt, last_err or "图片引擎未返回图片数据"
 
 
 def generate_scene_with_imagen4(copy_text: str, industry: dict) -> tuple:
-    """Pro档：Imagen 4 Fast 文生图（9:16竖图，高质量，消耗Pro配额）
+    """商家版：Imagen 4 Ultra 文生图（9:16竖图，最高画质，消耗Pro配额）
     返回 (images: list[PIL.Image], scene_prompt: str, error_msg: str)
     """
     from openai import OpenAI
@@ -412,35 +462,120 @@ def generate_scene_with_imagen4(copy_text: str, industry: dict) -> tuple:
     except Exception as e:
         return [], "", friendly_api_error(e)
 
-    # Step 2: Imagen 4 Fast 文生图（9:16竖图）
+    # Step 2: Imagen 4 Ultra 文生图（一次请求2张，9:16竖图）
     gai_key = get_api_key("GOOGLE_API_KEY")
     if not gai_key:
         return [], scene_prompt, "未配置 Google API Key"
 
     g_client = genai.Client(api_key=gai_key)
+    images = []
+    last_err = ""
     try:
         response = g_client.models.generate_images(
-            model="imagen-4.0-fast-generate-001",
+            model="imagen-4.0-ultra-generate-001",
             prompt=scene_prompt,
             config=types.GenerateImagesConfig(
                 number_of_images=2,
                 aspect_ratio="9:16",
+                person_generation="allow_adult",
             ),
         )
-        images = []
-        for gi in (response.generated_images or []):
-            if gi.image and gi.image.image_bytes:
-                images.append(Image.open(io.BytesIO(gi.image.image_bytes)).convert("RGB"))
-        if images:
-            return images, scene_prompt, ""
-        return [], scene_prompt, "Imagen 4 未返回图片数据"
+        for gen_img in response.generated_images:
+            images.append(Image.open(io.BytesIO(gen_img.image.image_bytes)).convert("RGB"))
     except Exception as e:
         err = str(e)
-        if "quota" in err.lower():
-            return [], scene_prompt, "API 配额不足，请稍后重试"
-        if "not found" in err.lower() or "404" in err:
-            return [], scene_prompt, "Imagen 4 Fast 模型暂不可用（需确认 Google AI 账号已开通此功能）"
-        return [], scene_prompt, f"生成失败：{err[:150]}"
+        if "quota" in err.lower() or "429" in err:
+            last_err = "API 配额不足，请稍后重试"
+        elif "not found" in err.lower() or "404" in err:
+            last_err = "高级图片引擎暂不可用，请确认 API Key 已开通图片生成权限"
+        else:
+            last_err = f"生成失败：{err[:150]}"
+
+    if images:
+        return images, scene_prompt, ""
+    return [], scene_prompt, last_err or "高级图片引擎未返回图片数据"
+
+
+def stealth_anti_hash(image: Image.Image) -> Image.Image:
+    """隐形防查重：肉眼看不出变化，但改变图片数字指纹。
+    不翻转、不变色、不改变商品外观。零 API 成本，100% 成功率。
+    """
+    import random
+    import numpy as np
+    from PIL import ImageFilter
+
+    img = image.copy()
+    w, h = img.size
+
+    # 1. 去除所有 EXIF 元数据（新建干净图片）
+    clean = Image.new("RGB", (w, h))
+    clean.paste(img)
+    img = clean
+
+    # 2. 轻微裁边 2-3%（肉眼几乎看不出，但尺寸和像素都变了）
+    crop_px = max(2, int(min(w, h) * random.uniform(0.02, 0.03)))
+    img = img.crop((crop_px, crop_px, w - crop_px, h - crop_px))
+
+    # 3. 微缩放（改变分辨率，±2% 以内）
+    new_w = int(img.width * random.uniform(0.98, 1.02))
+    new_h = int(img.height * random.uniform(0.98, 1.02))
+    img = img.resize((new_w, new_h), Image.LANCZOS)
+
+    # 4. 隐形噪点（±2 像素值，肉眼完全不可见）
+    arr = np.array(img, dtype=np.int16)
+    noise = np.random.randint(-2, 3, arr.shape, dtype=np.int16)
+    arr = np.clip(arr + noise, 0, 255).astype(np.uint8)
+    img = Image.fromarray(arr)
+
+    # 5. 极轻微模糊（radius=0.3，几乎不可见但改变像素指纹）
+    img = img.filter(ImageFilter.GaussianBlur(radius=0.3))
+
+    # 6. 背景模糊（只模糊背景，突出主体）
+    try:
+        from rembg import remove as rembg_remove
+        # 获取前景蒙版（RGBA，A通道=前景mask）
+        fg_rgba = rembg_remove(img)
+        mask = fg_rgba.split()[-1]  # Alpha 通道作为前景蒙版
+        # 背景微模糊（10%≈radius 1.5，轻微虚化不影响观感）
+        bg_blur = img.filter(ImageFilter.GaussianBlur(radius=1.5))
+        # 合成：前景清晰 + 背景模糊
+        img = Image.composite(img, bg_blur, mask)
+    except Exception:
+        pass  # rembg 不可用时跳过背景模糊
+
+    return img
+
+
+def remove_watermark_and_protect(image: Image.Image) -> tuple:
+    """去水印 + 隐形防查重（两步组合）。
+    第1步：Gemini AI 去除小红书水印
+    第2步：隐形防查重（不翻转、不变色）
+    返回 (处理后的图片 PIL.Image | None, error_msg: str)
+    """
+    # 专门针对小红书水印的提示词
+    watermark_prompt = (
+        "Remove the semi-transparent white Chinese text watermark '小红书' "
+        "(which means 'Xiaohongshu') from the center of this image. "
+        "The watermark is white/light colored text overlaid on the image. "
+        "Carefully reconstruct the area behind the watermark to match the surrounding content. "
+        "IMPORTANT: Do NOT flip, mirror, or rotate the image. "
+        "Do NOT change any colors of clothing, products, or objects. "
+        "Do NOT add any new elements. "
+        "Keep everything else exactly the same — only remove the watermark text. "
+        "The result should look like the original photo without any text overlay."
+    )
+
+    # 第1步：Gemini 去水印
+    cleaned, err = edit_image_with_gemini(image, watermark_prompt)
+
+    if cleaned:
+        # 第2步：隐形防查重
+        result = stealth_anti_hash(cleaned)
+        return result, ""
+    else:
+        # Gemini 失败时，仍然做隐形防查重（至少改变指纹）
+        fallback = stealth_anti_hash(image)
+        return fallback, f"去水印未成功（{err}），已完成隐形防查重"
 
 
 def edit_image_with_gemini(image: Image.Image, prompt: str):
@@ -486,14 +621,14 @@ def edit_image_with_gemini(image: Image.Image, prompt: str):
                         and getattr(part.inline_data, "mime_type", "").startswith("image/")
                     ):
                         return Image.open(io.BytesIO(part.inline_data.data)).convert("RGB"), ""
-            last_error = f"{model_name}：返回响应但无图片数据"
+            last_error = "图片引擎：返回响应但无图片数据"
         except Exception as e:
             err = str(e)
             if "404" in err:
-                last_error = f"{model_name}：模型暂不可用"
+                last_error = "图片引擎：模型暂不可用"
             elif "quota" in err.lower():
-                last_error = "API 配额已用尽，请稍后重试"
+                last_error = "图片引擎配额已用尽，请稍后重试"
             else:
-                last_error = f"{model_name}：{err[:120]}"
+                last_error = f"图片引擎：{err[:120]}"
 
     return None, last_error

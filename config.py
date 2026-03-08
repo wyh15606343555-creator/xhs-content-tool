@@ -13,32 +13,70 @@ DB_PATH = Path(__file__).parent / "xhs_agent.db"
 
 
 # ═══════════════════════════════════════════════════════
-#  Pro 配额（免费试用 + 付费订阅）
+#  会员体系（4档）
 # ═══════════════════════════════════════════════════════
-PRO_GEN_LIMIT = 10          # 免费试用额度（每个邀请码）
+FREE_QUOTA = 50             # 体验版免费额度（每个邀请码）— 内测期间提升
 
-# 付费订阅方案（价格和额度可随时调整）
-SUBSCRIPTION_PLANS = [
-    {
-        "name": "月度会员",
+# 会员方案定义
+# tier: free / plus / pro / promax
+# ai_brain: deepseek / claude
+# image_tier: free(Imagen 4 Fast 竖图) / pro(Imagen 4 Ultra 竖图) / promax(Nano Banana Pro, 暂未开放)
+TIER_PLANS = {
+    "free": {
+        "name": "体验版",
+        "price": 0,
+        "unit": "",
+        "quota": 50,
+        "billing": "one_time",      # 一次性
+        "ai_brain": "deepseek",
+        "image_tier": "free",
+        "desc": "免费体验 · 标准配图 · 50次额度（内测）",
+        "tag": "",
+    },
+    "plus": {
+        "name": "达人版",
+        "price": 99,
+        "unit": "元/50次",
+        "quota": 50,
+        "billing": "one_time",      # 次数包（一次性购买）
+        "ai_brain": "deepseek",
+        "image_tier": "free",
+        "desc": "智能文案 + 标准配图 · 50次",
+        "tag": "入门",
+    },
+    "pro": {
+        "name": "商家版",
         "price": 99,
         "unit": "元/月",
-        "quota_per_month": 100,
-        "desc": "每月 100 次 Pro 精品配图",
+        "quota": 100,
+        "billing": "monthly",       # 按月订阅
+        "ai_brain": "deepseek",
+        "image_tier": "pro",
+        "desc": "每月100次 · 智能文案 + 高清配图",
         "tag": "推荐",
     },
-    {
-        "name": "季度会员",
-        "price": 249,
-        "unit": "元/季",
-        "quota_per_month": 100,
-        "desc": "每月 100 次（省 18%）",
-        "tag": "划算",
+    "promax": {
+        "name": "企业版",
+        "price": 399,
+        "unit": "元/月",
+        "quota": 300,
+        "billing": "monthly",       # 按月订阅
+        "ai_brain": "claude",
+        "image_tier": "promax",
+        "desc": "每月300次 · 顶级文案 + 旗舰配图（即将开放）",
+        "tag": "旗舰",
+        "disabled": True,           # 暂未开放
     },
-]
+}
+
+# 付费方案列表（排除免费，用于展示）
+PAID_PLANS = [TIER_PLANS[k] for k in ("plus", "pro", "promax")]
 
 # 收款联系方式（显示在付费引导页面）
 PAYMENT_CONTACT_WECHAT = "15606343555"   # 微信号（扫码加好友后转账）
+
+# 兼容旧代码
+PRO_GEN_LIMIT = FREE_QUOTA
 
 
 # ═══════════════════════════════════════════════════════
@@ -75,8 +113,8 @@ INDUSTRY_ICONS: dict[str, str] = {
     "jewelry": f'<svg {ICON_ATTRS}><path d="M6 3h12l4 6-10 13L2 9z"/><path d="M11 3l1 6"/><path d="M13 3l-1 6"/><path d="M2 9h20"/><path d="M6 3L12 9"/><path d="M18 3l-6 6"/></svg>',
     # 宠物服务 — 爪印
     "pet": f'<svg {ICON_ATTRS}><circle cx="11" cy="4" r="2"/><circle cx="18" cy="8" r="2"/><circle cx="20" cy="16" r="2"/><path d="M9 10a5 5 0 015 5v3.5a3.5 3.5 0 01-6.84 1.045Q6.52 17.48 4.46 16.84A3.5 3.5 0 015.5 10z"/></svg>',
-    # 旅游出行 — 飞机
-    "travel": f'<svg {ICON_ATTRS}><path d="M17.8 19.2L16 11l3.5-3.5C21 6 21.5 4 21 3c-1-.5-3 0-4.5 1.5L13 8 4.8 6.2c-.5-.1-.9.1-1.1.5l-.3.5c-.2.5-.1 1 .3 1.3L9 12l-2 3H4l-1 1 3 2 2 3 1-1v-3l3-2 3.5 5.3c.3.4.8.5 1.3.3l.5-.2c.4-.3.6-.7.5-1.2z"/></svg>',
+    # 其他行业 — 加号圆圈
+    "custom": f'<svg {ICON_ATTRS}><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="16"/><line x1="8" y1="12" x2="16" y2="12"/></svg>',
 }
 
 
@@ -646,20 +684,21 @@ INDUSTRIES = {
         ),
     },
 
-    "travel": {
-        "label": "旅游出行",
-        "desc": "景区 / 旅行社 / 定制游 / 周边游攻略",
+    "custom": {
+        "label": "其他行业",
+        "desc": "找不到你的行业？自定义行业模板",
 
         # ── 竞品参考模式 (Mode A) ──
+        # 注意：system_prompt 会在 app.py 中被动态替换，此处为兜底默认值
         "system_prompt": (
-            "你是专业的旅游出行小红书文案改写专家。\n\n"
+            "你是专业的小红书文案改写专家。\n\n"
             "改写规则：\n"
-            "1. 保留核心信息（目的地、行程亮点、价格、交通/住宿建议）\n"
+            "1. 保留原文核心卖点（效果数据、产品亮点、真实反馈）\n"
             "2. 完全更换表达方式，改写率 > 70%\n"
-            "3. 风格：有画面感、有向往感，口语化，适当使用 emoji\n"
-            "4. 多用「宝藏目的地」「私藏攻略」「错峰出行」「治愈系」「打卡胜地」等种草词\n"
-            "5. 融入出发城市/路线的本地感，增强实用性\n"
-            "6. 结尾保留并优化话题标签（5-8个）\n\n"
+            "3. 风格：专业可信+亲切真实，口语化，适当使用 emoji\n"
+            "4. 融入城市本地元素（地标、商圈、区域名）\n"
+            "5. 保留并优化话题标签（#xxx）\n"
+            "6. 强调核心卖点和差异化优势\n\n"
             "请严格按以下格式输出：\n"
             "【标题】改写后的标题\n"
             "【正文】改写后的正文"
@@ -667,34 +706,34 @@ INDUSTRIES = {
 
         # ── 原创生成模式 (Mode B) ──
         "profile_fields": [
-            {"key": "agency_name",   "label": "旅行社/品牌名", "placeholder": "如：悦途定制旅行"},
-            {"key": "destination",   "label": "目的地/线路",   "placeholder": "如：云南大理丽香5日游 / 周边亲子游"},
-            {"key": "price_range",   "label": "价格/人均",     "placeholder": "如：成人1980元/人 / 亲子家庭套餐3800元"},
-            {"key": "highlights",    "label": "行程亮点",      "placeholder": "如：含接机/特色民宿/古城游览/私家团"},
+            {"key": "industry_name", "label": "你的行业",      "placeholder": "如：花艺工作室 / 汽车改装 / 瑜伽馆 / 摄影"},
+            {"key": "store_name",    "label": "店铺/品牌名",   "placeholder": "如：小森花艺工作室"},
+            {"key": "main_service",  "label": "主营产品/服务", "placeholder": "如：婚礼花艺定制 / 鲜花订阅 / 花艺课程"},
+            {"key": "advantage",     "label": "核心优势/卖点", "placeholder": "如：10年花艺师 / 进口花材 / 当日达"},
         ],
-        "brief_placeholder": "如：上周带了一个家庭客户去大理玩，天气超好，苍山洱海都拍到了，客户超满意，想做成案例展示",
+        "brief_placeholder": "描述你今天想发的内容，比如：今天做了一个客户的婚礼花艺，现场效果超好，新娘特别满意",
+        # 注意：create_system_prompt 会在 app.py 中被动态替换，此处为兜底默认值
         "create_system_prompt": (
-            "你是专业的旅游出行小红书文案创作专家。\n\n"
-            "根据旅行社/线路信息和今日主题，创作一篇原创小红书种草笔记。\n\n"
+            "你是专业的小红书文案创作专家。\n\n"
+            "根据店铺信息和今日主题，创作一篇原创小红书笔记。\n\n"
             "创作要求：\n"
-            "1. 风格：有画面感、有向往感，口语化，适当使用 emoji\n"
-            "2. 结构：景色/体验钩子标题 + 出行场景代入 + 行程/亮点介绍 + 费用/服务说明 + 咨询/报名引导\n"
-            "3. 多用「宝藏目的地」「私藏攻略」「治愈系」「打卡胜地」「不踩坑」等高流量词\n"
-            "4. 可融入真实出行体验感受和细节描写\n"
+            "1. 风格：专业可信+真实亲切，口语化，适当使用 emoji\n"
+            "2. 结构：吸引眼球的标题 + 痛点/需求共鸣 + 产品/服务介绍 + 效果/案例展示 + 行动引导\n"
+            "3. 围绕行业特点使用高转化种草词\n"
+            "4. 加入真实案例或数据对比，增强可信度\n"
             "5. 结尾加话题标签（5-8个）\n"
             "6. 字数：正文300-500字\n\n"
             "请严格按以下格式输出：\n"
-            "【标题】原创标题（含emoji，体现向往感或实用感）\n"
+            "【标题】原创标题（含emoji，突出卖点）\n"
             "【正文】原创正文"
         ),
 
         # ── 图片处理提示词 ──
         "image_prompt": (
-            "Enhance this travel/landscape/tourism photo for social media: "
-            "boost colors, saturation, and contrast to make scenery look vivid and breathtaking. "
-            "Improve sky clarity, enhance natural colors of mountains, water, and greenery. "
-            "Remove any text overlays, watermarks, tour agency logos, or price information completely. "
-            "The result should look like a stunning travel photography shot that inspires viewers to visit."
+            "Remove ALL text, watermarks, logos, price tags, and any overlaid graphics "
+            "from this image completely. Reconstruct the areas behind removed elements naturally. "
+            "Keep the main subject, people, products, and background exactly the same. "
+            "The result should look like a clean, professional photo suitable for social media."
         ),
     },
 }
@@ -707,6 +746,7 @@ DEFAULTS = dict(
     authed=False,
     invite_code="",
     industry_id=None,
+    industry_preview="",   # 第一次点击：预览选中（高亮），再次点击确认
     selected_mode=None,    # "rewrite" 或 "create"，由用户选择
     city="",
     # Mode A：竞品参考
@@ -724,6 +764,7 @@ DEFAULTS = dict(
     # Mode B：原创生成
     store_profile={},
     daily_brief="",
+    custom_industry_name="",   # "其他行业"时用户自填的行业名
     create_images=[],
     dynamic_image_prompt="",
     scene_images=[],

@@ -1,6 +1,6 @@
 """
 小红书通用内容 Agent — Demo v5.0
-邀请码测试版 | 12大行业全部支持双模式 | 免费+Pro双档AI配图
+邀请码测试版 | 12大行业全部支持双模式 | 4档会员体系（体验/达人/商家/企业）
 """
 
 import streamlit as st
@@ -12,22 +12,25 @@ from PIL import Image
 
 from config import (
     INDUSTRIES, INDUSTRY_ICONS, ICON_ATTRS, DEFAULTS,
-    PRO_GEN_LIMIT, ADMIN_CODES,
-    SUBSCRIPTION_PLANS, PAYMENT_CONTACT_WECHAT,
+    PRO_GEN_LIMIT, FREE_QUOTA, ADMIN_CODES,
+    TIER_PLANS, PAID_PLANS, PAYMENT_CONTACT_WECHAT,
 )
 from utils import (
     init_db, log_event, save_generation, get_history, get_db,
     friendly_api_error, img_cols,
     get_pro_used, has_pro_quota, try_use_pro_quota, refund_pro_quota,
-    add_pro_quota,
+    add_pro_quota, get_user_tier,
     check_invite_code, make_zip, make_batch_zip,
 )
 from api import (
     try_extract_xhs, download_image_url,
     rewrite_with_deepseek, generate_original_content,
+    rewrite_with_claude, generate_original_with_claude,
     generate_dynamic_image_prompt,
     generate_scene_nano_banana, generate_scene_with_imagen4,
     edit_image_with_gemini,
+    remove_watermark_and_protect,
+    stealth_anti_hash,
 )
 
 
@@ -335,55 +338,124 @@ code, pre {
     border-top-color: #FF2442 !important;
 }
 
-/* ── Industry Cards 3D hover ── */
+/* ── Industry Cards ── */
+
+/* ── 行业卡片 ── */
+
+/* 同行列等高 + 行间距 */
+[data-testid="stHorizontalBlock"]:has(.ind-card) {
+    align-items: stretch !important;
+    margin-bottom: 2px !important;
+    row-gap: 14px !important;
+}
+[data-testid="stColumn"]:has(.ind-card) {
+    display: flex !important;
+    flex-direction: column !important;
+    position: relative !important;
+}
+/* 让 column → card 之间所有中间层 div 都 flex 撑满（共5层） */
+[data-testid="stColumn"]:has(.ind-card) > div,
+[data-testid="stColumn"]:has(.ind-card) > div > div:first-child,
+[data-testid="stColumn"]:has(.ind-card) > div > div:first-child > div,
+[data-testid="stColumn"]:has(.ind-card) > div > div:first-child > div > div,
+[data-testid="stColumn"]:has(.ind-card) > div > div:first-child > div > div > div {
+    flex: 1 !important;
+    display: flex !important;
+    flex-direction: column !important;
+    min-height: 0 !important;
+}
+
 .ind-card {
-    border-radius: 16px;
-    padding: 20px 12px;
+    border-radius: 14px;
+    padding: 14px 10px 12px;
     text-align: center;
-    min-height: 124px;
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 4px;
     overflow: hidden;
     box-sizing: border-box;
-    transition: transform 0.3s cubic-bezier(.34,1.56,.64,1),
-                box-shadow 0.3s ease,
-                border-color 0.3s ease;
-    cursor: default;
-    perspective: 800px;
-}
-.ind-card:hover {
-    transform: translateY(-6px) scale(1.03);
-    box-shadow: 0 12px 28px rgba(0,0,0,0.10), 0 2px 6px rgba(0,0,0,0.04);
+    border: 2px solid #E5E5EA;
+    background: #FFFFFF;
+    transition: all 0.25s ease;
+    cursor: pointer;
 }
 .ind-card.ind-sel {
-    border: 2px solid #FF2442;
+    border-color: #FF2442;
     background: #FFF1F3;
-    box-shadow: 0 0 0 3px rgba(255,36,66,0.12), 0 4px 14px rgba(255,36,66,0.18);
+    box-shadow: 0 4px 16px rgba(255,36,66,0.12);
+    animation: cardFloat 2.5s ease-in-out infinite;
 }
-.ind-card.ind-sel:hover {
-    transform: translateY(-6px) scale(1.03);
-    box-shadow: 0 0 0 3px rgba(255,36,66,0.18), 0 14px 32px rgba(255,36,66,0.22);
-}
-.ind-card:not(.ind-sel) {
-    border: 1px solid #E5E5EA;
-    background: #FFFFFF;
-    box-shadow: 0 1px 3px rgba(0,0,0,0.06);
+@keyframes cardFloat {
+    0%, 100% { transform: translateY(0); }
+    50% { transform: translateY(-3px); }
 }
 .ind-icon {
-    width: 46px; height: 46px; border-radius: 13px;
+    width: 38px; height: 38px; border-radius: 12px;
     display: inline-flex; align-items: center; justify-content: center;
-    margin-bottom: 10px;
+    flex-shrink: 0;
     transition: transform 0.3s ease;
 }
-.ind-card:hover .ind-icon {
-    transform: rotateY(12deg) scale(1.08);
-}
 .ind-name {
-    font-weight: 650; font-size: 0.9rem;
-    overflow-wrap: break-word;
+    font-weight: 650; font-size: 0.85rem;
+    overflow-wrap: break-word; line-height: 1.3;
     transition: color 0.2s ease;
 }
 .ind-desc {
-    font-size: 0.72rem; color: #86868B; margin-top: 5px;
-    overflow-wrap: break-word;
+    font-size: 0.68rem; color: #86868B;
+    overflow-wrap: break-word; line-height: 1.3;
+}
+/* 卡片内的操作标签 */
+.ind-action {
+    margin-top: 6px;
+    font-size: 0.68rem;
+    color: #86868B;
+    font-weight: 500;
+    padding: 3px 14px;
+    border-radius: 10px;
+    background: #F2F2F7;
+    transition: all 0.2s ease;
+    flex-shrink: 0;
+}
+.ind-sel .ind-action {
+    background: linear-gradient(135deg, #FF2442, #FF6B81);
+    color: #FFFFFF;
+    font-weight: 600;
+    font-size: 0.7rem;
+    padding: 4px 16px;
+    box-shadow: 0 2px 8px rgba(255,36,66,0.2);
+}
+
+/* Streamlit 按钮：整个容器绝对定位覆盖卡片，不占据流式空间 */
+[data-testid="stColumn"]:has(.ind-card) [class*="st-key-sel_"] {
+    position: absolute !important;
+    inset: 0 !important;
+    z-index: 10 !important;
+    height: auto !important;
+    min-height: 0 !important;
+}
+[data-testid="stColumn"]:has(.ind-card) [class*="st-key-sel_"] .stButton {
+    height: 100% !important;
+    margin: 0 !important;
+    padding: 0 !important;
+}
+[data-testid="stColumn"]:has(.ind-card) [class*="st-key-sel_"] .stButton > button {
+    width: 100% !important;
+    height: 100% !important;
+    min-height: 0 !important;
+    opacity: 0 !important;
+    background: transparent !important;
+    border: none !important;
+    cursor: pointer !important;
+    padding: 0 !important;
+    box-shadow: none !important;
+}
+/* 触摸反馈：通过卡片本身 */
+.ind-card:active {
+    transform: scale(0.97);
+    filter: brightness(0.96);
 }
 
 /* ── Image captions ── */
@@ -394,6 +466,115 @@ code, pre {
 ::-webkit-scrollbar-track { background: #F5F5F7; }
 ::-webkit-scrollbar-thumb { background: #D1D1D6; border-radius: 3px; }
 ::-webkit-scrollbar-thumb:hover { background: #AEAEB2; }
+
+/* ═══════════════════════════════════════════════
+   MOBILE RESPONSIVE — 竖屏手机优化
+═══════════════════════════════════════════════ */
+
+/* ── 平板 & 大屏手机（≤768px）── */
+@media (max-width: 768px) {
+    /* 容器减少左右留白 */
+    .main .block-container {
+        padding-left: 0.8rem !important;
+        padding-right: 0.8rem !important;
+        padding-top: 1rem !important;
+    }
+
+    /* 所有列布局允许换行，默认每列至少占 48%（2列/行） */
+    [data-testid="stHorizontalBlock"] {
+        flex-wrap: wrap !important;
+        gap: 0.5rem !important;
+    }
+    [data-testid="stHorizontalBlock"] > [data-testid="stColumn"] {
+        min-width: 47% !important;
+        flex: 1 1 47% !important;
+    }
+
+    /* 标题缩小 */
+    h1 { font-size: 1.6rem !important; }
+    h3 { font-size: 1rem !important; }
+
+    /* 邀请码门禁页：减少上方留白 */
+    .gate-box {
+        padding: 2rem 0.5rem 1.5rem !important;
+    }
+    .gate-title {
+        font-size: 2rem !important;
+    }
+
+    /* 行业卡片：缩小内边距 */
+    .ind-card {
+        padding: 10px 8px !important;
+    }
+    .ind-icon {
+        width: 34px !important;
+        height: 34px !important;
+        border-radius: 10px !important;
+    }
+    .ind-name { font-size: 0.78rem !important; }
+    .ind-desc { font-size: 0.62rem !important; }
+    .ind-action { font-size: 0.62rem !important; padding: 2px 10px !important; }
+    .ind-sel .ind-action { font-size: 0.65rem !important; padding: 3px 12px !important; }
+
+    /* 侧边栏宽度 */
+    section[data-testid="stSidebar"] {
+        min-width: 260px !important;
+        max-width: 280px !important;
+    }
+}
+
+/* ── 小屏手机（≤480px）── */
+@media (max-width: 480px) {
+    /* 容器进一步减小留白 */
+    .main .block-container {
+        padding-left: 0.5rem !important;
+        padding-right: 0.5rem !important;
+    }
+
+    /* 模式选择卡片、按钮等：单列堆叠 */
+    [data-testid="stHorizontalBlock"] > [data-testid="stColumn"] {
+        min-width: 100% !important;
+        flex: 1 1 100% !important;
+    }
+
+    /* 但行业卡片保持 2 列（通过限制特定区域内的列宽）
+       行业卡片区域的列宽覆盖：恢复 48% */
+    [data-testid="stHorizontalBlock"]:has(> [data-testid="stColumn"] .ind-card)
+    > [data-testid="stColumn"] {
+        min-width: 47% !important;
+        flex: 1 1 47% !important;
+    }
+
+    /* 标题进一步缩小 */
+    h1 { font-size: 1.4rem !important; }
+    .gate-title { font-size: 1.6rem !important; }
+    .gate-sub { font-size: 0.75rem !important; letter-spacing: 0.08em !important; }
+    .gate-box { padding: 1.5rem 0.3rem 1rem !important; }
+
+    /* 按钮文字缩小避免溢出 */
+    .stButton > button {
+        font-size: 0.85rem !important;
+        padding: 0.5rem 0.8rem !important;
+    }
+
+    /* 会员方案卡片：内边距缩小 */
+    .stButton > button[kind="primary"] {
+        font-size: 0.85rem !important;
+    }
+}
+
+/* ── 极小屏（≤360px，如 iPhone SE）── */
+@media (max-width: 360px) {
+    .gate-title { font-size: 1.4rem !important; }
+    h1 { font-size: 1.2rem !important; }
+    .ind-card {
+        padding: 8px 6px !important;
+    }
+    .ind-icon { width: 28px !important; height: 28px !important; }
+    .ind-name { font-size: 0.72rem !important; }
+    .ind-desc { font-size: 0.58rem !important; }
+    .ind-action { font-size: 0.58rem !important; padding: 2px 8px !important; }
+}
 </style>
 """, unsafe_allow_html=True)
 
@@ -441,6 +622,15 @@ if not st.session_state.authed:
                 st.error("邀请码无效，请联系 David 获取")
 
         st.caption("没有邀请码？联系 David 申请测试资格")
+
+        st.divider()
+        st.caption(
+            "**免责声明：** 本工具为小红书内容创作辅助工具，生成的文案和图片仅作为"
+            "**创作参考素材**。根据《人工智能生成合成内容标识办法》（2025年9月施行）"
+            "及平台社区规范，AI辅助生成的内容在发布时可能需要进行标识，且存在被平台"
+            "算法识别的可能性。建议结合自身风格二次编辑后发布。因用户发布行为产生的"
+            "任何后果，由用户自行承担。使用本工具即表示您已阅读并同意以上条款。"
+        )
     st.stop()
 
 
@@ -468,24 +658,22 @@ with st.sidebar:
 
     st.divider()
 
-    # Pro 配额显示
+    # 会员额度显示
     _code = st.session_state.invite_code
+    _user_tier_now = get_user_tier(_code)
+    _tier_label_now = TIER_PLANS.get(_user_tier_now, TIER_PLANS["free"])["name"]
     _pro_used = get_pro_used(_code)
     _pro_left = PRO_GEN_LIMIT - _pro_used
-    st.markdown("**⭐ Pro 精品配图额度**")
+    st.markdown(f"**💎 {_tier_label_now}** · 配图额度")
     if _pro_left > 10:
         st.success(f"剩余 **{_pro_left}** 次")
     elif _pro_left > 0:
         st.warning(f"剩余 **{_pro_left}** 次（快用完了）")
     else:
-        st.error("免费试用额度已用完")
-        st.caption("👇 订阅会员，解锁更多额度")
-        if SUBSCRIPTION_PLANS:
-            _plan = SUBSCRIPTION_PLANS[0]
-            st.markdown(
-                f"**{_plan['name']}** {_plan['price']}{_plan['unit']}\n\n"
-                f"{_plan['desc']}"
-            )
+        st.error("体验额度已用完")
+        st.caption("👇 升级会员，解锁更多额度")
+        _plus = TIER_PLANS["plus"]
+        st.markdown(f"**{_plus['name']}** ¥{_plus['price']}/{_plus['quota']}次")
         st.caption(f"微信联系充值：{PAYMENT_CONTACT_WECHAT}")
 
     st.caption("")
@@ -518,7 +706,79 @@ with st.sidebar:
             st.caption("还没有生成记录")
 
     st.divider()
+    with st.expander("📋 用户须知与免责声明"):
+        st.markdown("""**一、工具定位**
+
+本工具是一款内容创作效率工具，帮助商家和创作者快速生成高质量的文案初稿与配图参考，降低内容创作门槛，助力账号运营。
+
+**二、内容性质**
+
+工具输出的所有文案和图片均为 **AI辅助生成的参考素材**，而非可直接发布的成品。我们强烈建议：
+- 在AI初稿基础上融入个人风格和真实体验，进行二次创作
+- 配图优先使用实拍照片，AI处理后的图片作为补充
+- 发布前根据平台要求判断是否需要添加AI内容标识
+
+**三、合规提示**
+
+根据国家互联网信息办公室等七部门联合发布的《人工智能生成合成内容标识办法》（2025年9月1日起施行），AI生成或深度合成的内容在特定场景下需进行标识。各社交媒体平台也在持续完善AI内容的检测与管理机制。
+
+本工具不对用户的发布行为及其后果承担责任。用户应自行关注并遵守相关法律法规及平台规则的最新要求。
+
+**四、使用建议**
+
+| 做法 | 推荐度 |
+|------|--------|
+| AI文案 + 大幅改写融入个人风格 | ⭐⭐⭐ 推荐 |
+| AI文案作为灵感参考，自己重写 | ⭐⭐⭐ 推荐 |
+| 实拍图 + AI辅助美化 | ⭐⭐⭐ 推荐 |
+| AI文案小幅修改直接发 | ⭐⭐ 可用，建议标识 |
+| AI生成图直接发 | ⭐ 建议标识或替换为实拍 |
+
+**五、责任界定**
+
+本工具仅提供内容生成服务，不参与、不控制、不代理用户在任何第三方平台的发布行为。用户使用本工具生成的内容进行发布、传播等行为，应自行确保符合适用法律法规及平台规则，相关责任由用户自行承担。""")
     st.caption("Demo v5.0 · 内测版\n\n遇到问题请截图反馈给 David 15606343555")
+
+    # ── 意见反馈入口（侧边栏，随时可见） ──
+    st.divider()
+    with st.expander("📝 意见反馈"):
+        _fb_text = st.text_area(
+            "你的建议",
+            placeholder="功能建议、使用问题、想要的新行业模板……都可以写在这里",
+            height=100,
+            label_visibility="collapsed",
+            key="sidebar_feedback_text",
+        )
+        _fb_rating = st.select_slider(
+            "体验评分",
+            options=["😣 很差", "😕 一般", "😐 还行", "😊 不错", "🤩 很棒"],
+            value="😊 不错",
+            key="sidebar_feedback_rating",
+        )
+        if st.button("提交反馈", key="sidebar_feedback_btn", type="primary", use_container_width=True):
+            if _fb_text.strip():
+                _fb_conn = None
+                try:
+                    _fb_conn = get_db()
+                    _fb_rating_text = _fb_rating.split(" ", 1)[-1] if " " in _fb_rating else _fb_rating
+                    _fb_conn.execute(
+                        "INSERT INTO feedback (invite_code, rating, feedback_text, industry_id, mode) "
+                        "VALUES (?, ?, ?, ?, ?)",
+                        (st.session_state.invite_code, _fb_rating_text, _fb_text.strip(),
+                         st.session_state.get("industry_id", ""), "sidebar"),
+                    )
+                    _fb_conn.commit()
+                except Exception:
+                    pass
+                finally:
+                    if _fb_conn:
+                        _fb_conn.close()
+                log_event(st.session_state.invite_code, "feedback",
+                          st.session_state.get("industry_id", ""), "sidebar",
+                          detail=_fb_text.strip()[:100])
+                st.success("感谢反馈！David 会认真看每一条 🙏")
+            else:
+                st.warning("请输入反馈内容")
 
     if st.button("退出登录", use_container_width=True):
         for k in list(st.session_state.keys()):
@@ -555,56 +815,120 @@ for row_keys in rows:
     cols = st.columns(4)
     for col, ikey in zip(cols, row_keys):
         info = INDUSTRIES[ikey]
-        selected = st.session_state.industry_id == ikey
-        check = " ✓" if selected else ""
-        name_color = "#FF2442" if selected else "#1D1D1F"
-        icon_bg = "linear-gradient(135deg,#FF2442,#FF6B81)" if selected else "#F5F5F7"
-        icon_color = "#FFFFFF" if selected else "#86868B"
-        sel_cls = "ind-sel" if selected else ""
+        previewed = st.session_state.get("industry_preview", "") == ikey
+        # 有预览态时，只显示预览卡片高亮，忽略旧的 industry_id
+        has_preview = bool(st.session_state.get("industry_preview", ""))
+        confirmed = (not has_preview) and st.session_state.industry_id == ikey
+        highlighted = previewed or confirmed
+        check = " ✓" if highlighted else ""
+        icon_bg = "linear-gradient(135deg,#FF2442,#FF6B81)" if highlighted else "#F5F5F7"
+        icon_color = "#FFFFFF" if highlighted else "#86868B"
+        sel_cls = "ind-sel" if highlighted else ""
         svg_icon = INDUSTRY_ICONS.get(ikey, "")
         svg_icon_colored = svg_icon.replace('stroke="currentColor"', f'stroke="{icon_color}"')
+        # 按钮标签：未选→选择，已高亮→确认进入
+        btn_label = "确认选择 →" if highlighted else "选择"
         with col:
             st.markdown(
                 f"""
-                <div class="ind-card {sel_cls}">
+                <div class="ind-card {sel_cls}" id="card_{ikey}">
                     <div class="ind-icon" style="background:{icon_bg};">
                         {svg_icon_colored}
                     </div>
-                    <div class="ind-name" style="color:{name_color};">
+                    <div class="ind-name" style="color:{'#FF2442' if highlighted else '#1D1D1F'};">
                         {info['label']}{check}
                     </div>
                     <div class="ind-desc">{info['desc']}</div>
+                    <div class="ind-action">{btn_label}</div>
                 </div>
                 """,
                 unsafe_allow_html=True,
             )
-            if st.button("选择", key=f"sel_{ikey}", use_container_width=True,
-                         type="primary" if selected else "secondary"):
-                st.session_state.industry_id = ikey
-                st.session_state.selected_mode = None   # 重置模式选择
-                st.session_state.content_ready = False
-                st.session_state.rewrite_done = False
-                st.session_state.images_done = False
-                st.session_state.rewrite_result = ""
-                st.session_state.edited_images = []
-                st.session_state.note_title = ""
-                st.session_state.note_text = ""
-                st.session_state.note_images = []
-                st.session_state.store_profile = {}
-                st.session_state.daily_brief = ""
-                st.session_state.create_images = []
-                st.session_state.dynamic_image_prompt = ""
-                st.session_state.scene_images = []
-                st.session_state.scene_prompt = ""
-                st.session_state.feedback_submitted = False
-                st.session_state["scene_tier"] = ""
+            # 透明按钮覆盖卡片（负责点击交互）
+            if st.button(btn_label, key=f"sel_{ikey}", use_container_width=True):
+                if previewed or confirmed:
+                    # 第二次点击 → 确认选择，进入第二步
+                    st.session_state.industry_id = ikey
+                    st.session_state.industry_preview = ""
+                    st.session_state.selected_mode = None
+                    st.session_state.content_ready = False
+                    st.session_state.rewrite_done = False
+                    st.session_state.images_done = False
+                    st.session_state.rewrite_result = ""
+                    st.session_state.edited_images = []
+                    st.session_state.note_title = ""
+                    st.session_state.note_text = ""
+                    st.session_state.note_images = []
+                    st.session_state.store_profile = {}
+                    st.session_state.daily_brief = ""
+                    st.session_state.custom_industry_name = ""
+                    st.session_state.create_images = []
+                    st.session_state.dynamic_image_prompt = ""
+                    st.session_state.scene_images = []
+                    st.session_state.scene_prompt = ""
+                    st.session_state.feedback_submitted = False
+                    st.session_state["scene_tier"] = ""
+                else:
+                    # 第一次点击 → 预览选中（高亮 + 浮动动画）
+                    st.session_state.industry_preview = ikey
                 st.rerun()
 
-if not st.session_state.industry_id:
-    st.info("👆 请先选择行业，再开始处理内容")
+# 底部提示
+if st.session_state.get("industry_preview") and not st.session_state.industry_id:
+    preview_name = INDUSTRIES[st.session_state.industry_preview]["label"]
+    st.success(f"已选中 **{preview_name}**，再次点击「确认选择 →」进入下一步")
     st.stop()
 
-industry = INDUSTRIES[st.session_state.industry_id]
+if not st.session_state.industry_id:
+    st.info("👆 点击卡片选择你的行业")
+    st.stop()
+
+industry = dict(INDUSTRIES[st.session_state.industry_id])  # 浅拷贝，避免修改原模板
+
+# ── 自定义行业：让用户输入行业名称，动态生成 AI 提示词 ─────────────────────
+if st.session_state.industry_id == "custom":
+    st.markdown("#### 告诉我你的行业")
+    _custom_name = st.text_input(
+        "你的行业名称",
+        value=st.session_state.custom_industry_name,
+        placeholder="如：花艺工作室 / 汽车改装 / 瑜伽馆 / 摄影工作室",
+        key="custom_industry_input",
+    )
+    st.session_state.custom_industry_name = _custom_name
+
+    if not _custom_name.strip():
+        st.info("请先输入你的行业名称")
+        st.stop()
+
+    # 动态重建 AI 提示词，把通用模板里注入行业名
+    industry["label"] = _custom_name.strip()
+    industry["system_prompt"] = (
+        f"你是专业的{_custom_name}小红书文案改写专家。\n\n"
+        "改写规则：\n"
+        f"1. 保留原文关于{_custom_name}的核心卖点（效果数据、产品亮点、真实反馈）\n"
+        "2. 完全更换表达方式，改写率 > 70%\n"
+        f"3. 风格：符合{_custom_name}行业调性，专业可信+亲切真实，口语化，适当使用 emoji\n"
+        "4. 融入城市本地元素（地标、商圈、区域名）\n"
+        "5. 保留并优化话题标签（#xxx）\n"
+        f"6. 强调{_custom_name}行业的核心卖点和差异化优势\n\n"
+        "请严格按以下格式输出：\n"
+        "【标题】改写后的标题\n"
+        "【正文】改写后的正文"
+    )
+    industry["create_system_prompt"] = (
+        f"你是专业的{_custom_name}小红书文案创作专家。\n\n"
+        f"根据{_custom_name}店铺/品牌信息和今日主题，创作一篇原创小红书笔记。\n\n"
+        "创作要求：\n"
+        f"1. 风格：符合{_custom_name}行业调性，专业可信+真实亲切，口语化，适当使用 emoji\n"
+        "2. 结构：吸引眼球的标题 + 痛点/需求共鸣 + 产品/服务介绍 + 效果/案例展示 + 行动引导\n"
+        f"3. 围绕{_custom_name}行业特点使用高转化种草词\n"
+        "4. 加入真实案例或数据对比，增强可信度\n"
+        "5. 结尾加话题标签（5-8个）\n"
+        "6. 字数：正文300-500字\n\n"
+        "请严格按以下格式输出：\n"
+        "【标题】原创标题（含emoji，突出卖点）\n"
+        "【正文】原创正文"
+    )
 
 
 # ═══════════════════════════════════════════════════════
@@ -638,7 +962,7 @@ if not st.session_state.selected_mode:
                 <li>粘贴竞品小红书笔记链接</li>
                 <li>AI 拆解爆文结构</li>
                 <li>自动改写成你的风格</li>
-                <li>图片去水印 / 去文字</li>
+                <li>AI去水印 + 隐形防查重</li>
             </ul>
             <div style="font-size:0.75rem; color:#86868B;">
                 适合：参考同行爆文、快速出内容
@@ -650,7 +974,7 @@ if not st.session_state.selected_mode:
         st.markdown(
             "<div style='background:#FFF1F3; border:1px solid #E5E5EA; border-radius:8px; "
             "padding:6px 10px; font-size:0.78rem; color:#FF2442; margin-top:4px;'>"
-            "文案改写：免费 &nbsp;·&nbsp; 图片去水印：免费</div>",
+            "文案改写：免费 &nbsp;·&nbsp; 去水印：免费</div>",
             unsafe_allow_html=True,
         )
         if st.button("选择竞品参考模式 →", key="mode_sel_a", type="primary", use_container_width=True):
@@ -679,7 +1003,7 @@ if not st.session_state.selected_mode:
                 <li>填写你的店铺 / 业务信息</li>
                 <li>AI 根据今日主题创作文案</li>
                 <li>美化真实照片（免费）</li>
-                <li>AI 生成配图（免费版 / Pro精品版）</li>
+                <li>AI 生成配图（体验版 / 精品版）</li>
             </ul>
             <div style="font-size:0.75rem; color:#86868B;">
                 适合：发原创内容、建立品牌形象
@@ -691,7 +1015,7 @@ if not st.session_state.selected_mode:
         st.markdown(
             "<div style='background:#FFF8F0; border:1px solid #E5E5EA; border-radius:8px; "
             "padding:6px 10px; font-size:0.78rem; color:#FF8C00; margin-top:4px;'>"
-            "文案创作：免费 &nbsp;·&nbsp; 免费AI配图 &nbsp;·&nbsp; Pro精品配图（50次/账号）</div>",
+            "文案创作：免费 &nbsp;·&nbsp; 标准配图 &nbsp;·&nbsp; 高清配图（升级解锁）</div>",
             unsafe_allow_html=True,
         )
         if st.button("选择原创生成模式 →", key="mode_sel_b", use_container_width=True):
@@ -1111,7 +1435,7 @@ if st.session_state.content_ready:
         f'<span class="step-num">2</span> **{label_2}**',
         unsafe_allow_html=True,
     )
-    st.caption("🆓 免费功能 · 由 DeepSeek 驱动")
+    st.caption("🆓 免费功能 · 由语言模型驱动")
 
     if st.button(btn_label, type="primary", key="btn_rewrite"):
         if mode == "rewrite" and not _is_batch_mode and not st.session_state.note_title and not st.session_state.note_text:
@@ -1121,11 +1445,18 @@ if st.session_state.content_ready:
         else:
             with st.status("AI 正在创作…", expanded=True) as _gen_status:
                 try:
+                    # 检查用户等级，企业版用 Claude
+                    _user_tier = get_user_tier(st.session_state.invite_code)
+                    _use_claude = (_user_tier == "promax")
+                    _brain_name = "高级语言模型" if _use_claude else "语言模型"
+                    _rewrite_fn = rewrite_with_claude if _use_claude else rewrite_with_deepseek
+                    _create_fn = generate_original_with_claude if _use_claude else generate_original_content
+
                     if mode == "rewrite" and _is_batch_mode:
                         # --- 批量改写 ---
                         for bi, br in enumerate(_batch):
-                            _gen_status.update(label=f"正在改写第 {bi+1}/{len(_batch)} 条…")
-                            result = rewrite_with_deepseek(
+                            _gen_status.update(label=f"{_brain_name} 正在改写第 {bi+1}/{len(_batch)} 条…")
+                            result = _rewrite_fn(
                                 br["title"], br["text"], industry, st.session_state.city,
                             )
                             br["rewrite"] = result
@@ -1142,12 +1473,12 @@ if st.session_state.content_ready:
                             )
                         log_event(st.session_state.invite_code, "generate_text",
                                    st.session_state.industry_id, "rewrite",
-                                   detail=json.dumps({"batch_count": len(_batch)}))
+                                   detail=json.dumps({"batch_count": len(_batch), "brain": _brain_name}))
                         # 兼容：第一条同步到旧变量
                         st.session_state.rewrite_result = _batch[0]["rewrite"]
                     elif mode == "rewrite":
-                        _gen_status.update(label="DeepSeek 正在改写文案…")
-                        result = rewrite_with_deepseek(
+                        _gen_status.update(label=f"{_brain_name} 正在改写文案…")
+                        result = _rewrite_fn(
                             st.session_state.note_title,
                             st.session_state.note_text,
                             industry,
@@ -1170,8 +1501,8 @@ if st.session_state.content_ready:
                         log_event(st.session_state.invite_code, "generate_text",
                                    st.session_state.industry_id, mode)
                     else:
-                        _gen_status.update(label="DeepSeek 正在创作文案…")
-                        result = generate_original_content(
+                        _gen_status.update(label=f"{_brain_name} 正在创作文案…")
+                        result = _create_fn(
                             st.session_state.store_profile,
                             st.session_state.daily_brief,
                             industry,
@@ -1234,8 +1565,8 @@ if st.session_state.content_ready:
 
 # ═══════════════════════════════════════════════════════
 #  Step 3：图片处理
-#  Mode A：去水印（Gemini 编辑，免费）
-#  Mode B：方案A 美化原图（Gemini，免费）+ 方案B AI配图（免费版 / Pro精品版）
+#  Mode A：去水印 + 隐形防查重（Gemini去水印 + PIL隐形处理）
+#  Mode B：方案A 美化原图（Gemini，免费）+ 方案B AI配图（体验版 / 精品版）
 # ═══════════════════════════════════════════════════════
 _has_any_images = st.session_state.note_images or any(br.get("images") for br in st.session_state.batch_results)
 if st.session_state.rewrite_done and (_has_any_images or mode == "create"):
@@ -1245,98 +1576,83 @@ if st.session_state.rewrite_done and (_has_any_images or mode == "create"):
     _batch = st.session_state.batch_results
     _is_batch_mode = mode == "rewrite" and len(_batch) > 1
 
-    # ─── Mode A：竞品参考 → 去水印/去文字（免费）───
+    # ─── Mode A：竞品参考 → 去水印 + 隐形防查重 ───
     if mode == "rewrite":
-        st.caption("🆓 免费功能 · 去除竞品水印和文字，图片内容保持不变")
-        img_prompt_r = industry["image_prompt"]
+        st.caption("🆓 免费功能 · AI去除小红书水印 + 隐形防查重（不翻转、不变色）")
 
-        with st.expander("查看图片处理提示词", expanded=False):
-            st.code(img_prompt_r, language=None)
+        with st.expander("处理说明", expanded=False):
+            st.markdown(
+                "**两步处理**，去水印 + 避免平台判定为搬运：\n\n"
+                "**第1步 — AI 去水印**\n"
+                "- 图片引擎识别并去除「小红书」水印文字\n"
+                "- 自动修复水印区域，还原原始画面\n\n"
+                "**第2步 — 隐形防查重**（肉眼看不出变化）\n"
+                "- 清除图片元数据\n"
+                "- 微裁边 2-3%\n"
+                "- 微缩放 ±2%\n"
+                "- 隐形噪点（±2像素值，不可见）\n\n"
+                "💡 不翻转图片、不改变商品颜色，确保商品展示效果不受影响"
+            )
 
         # 计算总图片数
         if _is_batch_mode:
             _total_imgs = sum(len(br.get("images", [])) for br in _batch)
-            _btn_img_label = f"🎨 一键处理全部图片（{_total_imgs} 张）"
+            _btn_img_label = f"🧹 一键去水印 + 防查重（{_total_imgs} 张）"
         else:
             _total_imgs = len(st.session_state.note_images)
-            _btn_img_label = "🎨 一键重绘图片"
+            _btn_img_label = "🧹 一键去水印 + 防查重"
 
         if _total_imgs > 0 and st.button(_btn_img_label, type="primary", key="btn_img"):
             if _is_batch_mode:
-                # --- 批量图片处理 ---
-                prog2 = st.progress(0, text="准备处理…")
-                _done_count = 0
-                _all_errors = []
-                for bi, br in enumerate(_batch):
-                    imgs = br.get("images", [])
-                    if not imgs:
-                        br["edited_images"] = []
-                        continue
-                    edited = []
-                    for i, img in enumerate(imgs):
-                        _done_count += 1
-                        prog2.progress(_done_count / _total_imgs,
-                                       text=f"笔记 {bi+1} · 第 {i+1}/{len(imgs)} 张（共 {_done_count}/{_total_imgs}）")
-                        result_img, err_msg = edit_image_with_gemini(img, img_prompt_r)
-                        edited.append(result_img)
-                        if err_msg:
-                            _all_errors.append(f"笔记{bi+1}-图片{i+1}：{err_msg}")
-                    br["edited_images"] = edited
-                prog2.progress(1.0, text="全部处理完成！")
-                # 兼容旧变量
+                # --- 批量处理 ---
+                _warnings = []
+                with st.spinner(f"正在处理 {_total_imgs} 张图片（AI去水印 + 隐形防查重）..."):
+                    for bi, br in enumerate(_batch):
+                        imgs = br.get("images", [])
+                        edited_list = []
+                        for img in imgs:
+                            result_img, err = remove_watermark_and_protect(img)
+                            edited_list.append(result_img if result_img else stealth_anti_hash(img))
+                            if err:
+                                _warnings.append(err)
+                        br["edited_images"] = edited_list
                 if _batch:
                     st.session_state.edited_images = _batch[0].get("edited_images", [])
                 st.session_state.images_done = True
-                _ok = sum(1 for br in _batch for x in br.get("edited_images", []) if x)
                 log_event(st.session_state.invite_code, "edit_image",
                            st.session_state.industry_id, mode,
-                           detail=json.dumps({"count": _total_imgs, "ok": _ok, "type": "watermark_batch"}))
-                if _ok == _total_imgs:
-                    st.success(f"全部 {_total_imgs} 张处理成功！")
-                elif _ok:
-                    st.warning(f"{_ok}/{_total_imgs} 张成功")
+                           detail=json.dumps({"count": _total_imgs, "type": "watermark_batch"}))
+                if _warnings:
+                    st.warning(f"部分图片去水印未成功，已完成隐形防查重：{_warnings[0]}")
                 else:
-                    st.error("图片处理全部失败，可跳过直接用原图下载")
-                if _all_errors:
-                    with st.expander("查看错误详情"):
-                        for e in _all_errors:
-                            st.caption(e)
+                    st.success(f"全部 {_total_imgs} 张处理完成！")
                 st.rerun()
             else:
-                # --- 单条图片处理（原逻辑）---
-                n = len(st.session_state.note_images)
-                prog2 = st.progress(0, text="准备处理…")
-                edited, errors = [], []
-                for i, img in enumerate(st.session_state.note_images):
-                    prog2.progress(i / n, text=f"正在处理第 {i+1}/{n} 张…")
-                    result_img, err_msg = edit_image_with_gemini(img, img_prompt_r)
-                    edited.append(result_img)
-                    if err_msg:
-                        errors.append(f"图片 {i+1}：{err_msg}")
-                prog2.progress(1.0, text="处理完成！")
+                # --- 单条处理 ---
+                _warnings = []
+                with st.spinner("正在处理图片（AI去水印 + 隐形防查重）..."):
+                    edited = []
+                    for img in st.session_state.note_images:
+                        result_img, err = remove_watermark_and_protect(img)
+                        edited.append(result_img if result_img else stealth_anti_hash(img))
+                        if err:
+                            _warnings.append(err)
                 st.session_state.edited_images = edited
                 if _batch:
                     _batch[0]["edited_images"] = edited
                 st.session_state.images_done = True
+                n = len(edited)
                 log_event(st.session_state.invite_code, "edit_image",
                            st.session_state.industry_id, mode,
                            detail=json.dumps({"count": n, "type": "watermark"}))
-                ok = sum(1 for x in edited if x)
-                if ok == n:
-                    st.success(f"全部 {n} 张处理成功！")
-                elif ok:
-                    st.warning(f"{ok}/{n} 张成功，{n-ok} 张失败")
+                if _warnings:
+                    st.warning(f"部分图片去水印未成功，已完成隐形防查重：{_warnings[0]}")
                 else:
-                    st.error("图片处理全部失败，可跳过直接用原图下载")
-                if errors:
-                    with st.expander("查看错误详情"):
-                        for e in errors:
-                            st.caption(e)
+                    st.success(f"全部 {n} 张处理完成！")
                 st.rerun()
 
         if st.session_state.images_done:
             if _is_batch_mode:
-                # 批量模式：tabs 展示
                 _img_tab_names = [f"笔记 {i+1}" for i in range(len(_batch))]
                 _img_tabs = st.tabs(_img_tab_names)
                 for bi, (tab, br) in enumerate(zip(_img_tabs, _batch)):
@@ -1351,10 +1667,25 @@ if st.session_state.rewrite_done and (_has_any_images or mode == "create"):
                             with c1:
                                 st.image(orig, caption=f"原图 {i+1}", use_container_width=True)
                             with c2:
-                                if ed:
-                                    st.image(ed, caption=f"重绘后 {i+1}", use_container_width=True)
-                                else:
-                                    st.warning(f"图片 {i+1} 处理失败")
+                                st.image(ed, caption=f"处理后 {i+1}", use_container_width=True)
+                                _ec1, _ec2 = st.columns([3, 1])
+                                with _ec1:
+                                    _req = st.text_input("修改", key=f"edit_bwm_{bi}_{i}",
+                                                         placeholder="不满意？描述修改要求…",
+                                                         label_visibility="collapsed")
+                                with _ec2:
+                                    _ebtn = st.button("✏️ 修改", key=f"edit_bwm_btn_{bi}_{i}",
+                                                      use_container_width=True)
+                                if _ebtn and _req:
+                                    with st.spinner(f"正在修改笔记{bi+1}第{i+1}张…"):
+                                        _new, _err = edit_image_with_gemini(ed, _req)
+                                    if _new:
+                                        st.session_state.batch_results[bi]["edited_images"][i] = _new
+                                        del st.session_state[f"edit_bwm_{bi}_{i}"]
+                                        st.success("修改成功！")
+                                        st.rerun()
+                                    else:
+                                        st.error(f"修改失败：{_err}")
             else:
                 for i, (orig, ed) in enumerate(
                     zip(st.session_state.note_images, st.session_state.edited_images)
@@ -1363,26 +1694,25 @@ if st.session_state.rewrite_done and (_has_any_images or mode == "create"):
                     with c1:
                         st.image(orig, caption=f"原图 {i+1}", use_container_width=True)
                     with c2:
-                        if ed:
-                            st.image(ed, caption=f"重绘后 {i+1}", use_container_width=True)
-                        else:
-                            st.warning(f"图片 {i+1} 处理失败")
-                            st.caption("可跳过，下载时使用原图")
-
-                if any(x is None for x in st.session_state.edited_images):
-                    if st.button("🔄 重试失败的图片", key="btn_retry"):
-                        prog3 = st.progress(0, text="重试中…")
-                        for i, (img, ed) in enumerate(
-                            zip(st.session_state.note_images, st.session_state.edited_images)
-                        ):
-                            if ed is None:
-                                prog3.progress(i / len(st.session_state.note_images),
-                                               text=f"重试第 {i+1} 张…")
-                                new_img, _ = edit_image_with_gemini(img, img_prompt_r)
-                                if new_img:
-                                    st.session_state.edited_images[i] = new_img
-                        prog3.progress(1.0, text="重试完成")
-                        st.rerun()
+                        st.image(ed, caption=f"处理后 {i+1}", use_container_width=True)
+                        _ec1, _ec2 = st.columns([3, 1])
+                        with _ec1:
+                            _req = st.text_input("修改", key=f"edit_wm_{i}",
+                                                 placeholder="不满意？描述修改要求…",
+                                                 label_visibility="collapsed")
+                        with _ec2:
+                            _ebtn = st.button("✏️ 修改", key=f"edit_wm_btn_{i}",
+                                              use_container_width=True)
+                        if _ebtn and _req:
+                            with st.spinner(f"正在修改第 {i+1} 张…"):
+                                _new, _err = edit_image_with_gemini(ed, _req)
+                            if _new:
+                                st.session_state.edited_images[i] = _new
+                                del st.session_state[f"edit_wm_{i}"]
+                                st.success("修改成功！")
+                                st.rerun()
+                            else:
+                                st.error(f"修改失败：{_err}")
 
     # ─── Mode B：原创模式 → 方案A 美化 + 方案B AI配图（免费/Pro）───
     else:
@@ -1399,7 +1729,7 @@ if st.session_state.rewrite_done and (_has_any_images or mode == "create"):
             with st.expander("查看专属美化指令", expanded=False):
                 if st.session_state.dynamic_image_prompt:
                     st.info(st.session_state.dynamic_image_prompt)
-                    st.caption("DeepSeek 根据你的文案情绪自动生成的 Gemini 图片处理指令")
+                    st.caption("语言模型根据你的文案情绪自动生成的图片处理指令")
                 else:
                     st.code(img_prompt_a, language=None)
 
@@ -1442,6 +1772,24 @@ if st.session_state.rewrite_done and (_has_any_images or mode == "create"):
                     with c2:
                         if ed:
                             st.image(ed, caption=f"美化后 {i+1}", use_container_width=True)
+                            _ec1, _ec2 = st.columns([3, 1])
+                            with _ec1:
+                                _req = st.text_input("修改", key=f"edit_bt_{i}",
+                                                     placeholder="不满意？描述修改要求…",
+                                                     label_visibility="collapsed")
+                            with _ec2:
+                                _ebtn = st.button("✏️ 修改", key=f"edit_bt_btn_{i}",
+                                                  use_container_width=True)
+                            if _ebtn and _req:
+                                with st.spinner(f"正在修改第 {i+1} 张…"):
+                                    _new, _err = edit_image_with_gemini(ed, _req)
+                                if _new:
+                                    st.session_state.edited_images[i] = _new
+                                    del st.session_state[f"edit_bt_{i}"]
+                                    st.success("修改成功！")
+                                    st.rerun()
+                                else:
+                                    st.error(f"修改失败：{_err}")
                         else:
                             st.warning(f"图片 {i+1} 处理失败")
                             st.caption("可跳过，下载时使用原图")
@@ -1463,15 +1811,14 @@ if st.session_state.rewrite_done and (_has_any_images or mode == "create"):
 
             st.divider()
 
-        # ── 方案B：AI 生成配图（免费版 + Pro精品版）──
+        # ── 方案B：AI 生成配图（体验版 + 精品版）──
         st.markdown("**🖼️ 方案B：AI 生成场景配图** — 无需上传照片，AI 根据文案内容创作")
 
         # 多用户额度提示
         st.info(
-            "**🆓 免费版**（Gemini Nano）：1:1 方图，500次/天由**所有测试用户共享**\n\n"
-            "**⭐ Pro精品版**（Imagen 4 Fast）：9:16 竖图，与小红书完美适配，画质更佳\n\n"
-            "⚠️ **多人同时使用提示**：免费额度为共享资源，高峰时段（晚上7-10点）可能暂时不可用。"
-            "建议：错开高峰期使用，或选择 Pro精品版获取专属额度。"
+            "**🆓 体验版/达人版**：9:16 竖图，高速生成\n\n"
+            "**⭐ 商家版**：9:16 竖图，最高画质\n\n"
+            "所有方案均为 9:16 竖图，完美适配小红书。"
         )
 
         _code_now = st.session_state.invite_code
@@ -1482,78 +1829,75 @@ if st.session_state.rewrite_done and (_has_any_images or mode == "create"):
         col_free, col_pro = st.columns(2)
 
         with col_free:
-            st.markdown("**🆓 免费版** · 1:1方图 · 共享额度")
+            st.markdown("**🆓 体验版** · 标准配图 · 9:16竖图")
             btn_free = st.button(
                 "🖼️ 生成免费AI配图（2张）",
                 key="btn_gen_free",
                 use_container_width=True,
             )
             if st.session_state.scene_images and st.session_state.get("scene_tier") == "free":
-                btn_regen_free = st.button("🔄 换一批（免费版）", key="btn_regen_free", use_container_width=True)
+                btn_regen_free = st.button("🔄 换一批（体验版）", key="btn_regen_free", use_container_width=True)
             else:
                 btn_regen_free = False
 
         with col_pro:
-            st.markdown(f"**⭐ Pro精品版** · 9:16竖图 · 剩余 {_pro_left_now}/{PRO_GEN_LIMIT} 次")
+            st.markdown(f"**⭐ 精品版** · 高清配图 · 剩余 {_pro_left_now} 次")
             if _has_quota:
                 btn_pro = st.button(
-                    f"⭐ 生成Pro精品配图（2张）· 消耗1次",
+                    "⭐ 生成精品配图（2张）· 消耗1次",
                     key="btn_gen_pro",
                     type="primary",
                     use_container_width=True,
                 )
             else:
                 st.button(
-                    "⭐ 免费试用额度已用完",
+                    "⭐ 体验额度已用完",
                     key="btn_gen_pro_disabled",
                     disabled=True,
                     use_container_width=True,
                 )
                 btn_pro = False
 
-        # ── 额度用完：显示付费订阅引导 ──
+        # ── 额度用完：显示4档会员升级引导 ──
         if not _has_quota:
             st.divider()
             st.markdown("### 🎉 恭喜你完成了试用体验！")
             st.markdown(
-                "你已经使用完了 **10次免费试用额度**，"
-                "说明你对我们的 Pro 精品配图很满意！\n\n"
-                "**订阅会员**，继续享受 9:16 竖图 + 高清画质 + 小红书完美适配："
+                f"你已经使用完了 **{FREE_QUOTA}次免费体验额度**，"
+                "升级会员继续享受 9:16 竖图 + 高清画质 + 小红书完美适配："
             )
 
-            # 方案卡片
-            _plan_cols = st.columns(len(SUBSCRIPTION_PLANS))
-            for _pc, _plan in zip(_plan_cols, SUBSCRIPTION_PLANS):
+            # 3档付费方案卡片
+            _plan_cols = st.columns(len(PAID_PLANS))
+            for _pc, _plan in zip(_plan_cols, PAID_PLANS):
                 with _pc:
                     _tag = _plan.get("tag", "")
                     _tag_html = f' <span style="background:#FF2442;color:white;padding:2px 8px;border-radius:10px;font-size:12px;">{_tag}</span>' if _tag else ""
+                    # 价格显示
+                    if _plan["unit"]:
+                        _price_suffix = _plan["unit"].replace("元/", "")
+                    else:
+                        _price_suffix = ""
+                    _suffix_html = f'<span style="font-size:14px;color:#86868B;">/{_price_suffix}</span>' if _price_suffix else ""
                     st.markdown(
                         f"<div style='border:2px solid #FF2442;border-radius:12px;padding:16px;text-align:center;'>"
                         f"<h4 style='margin:0;'>{_plan['name']}{_tag_html}</h4>"
                         f"<p style='font-size:28px;font-weight:bold;color:#FF2442;margin:8px 0;'>"
-                        f"¥{_plan['price']}<span style='font-size:14px;color:#86868B;'>/{_plan['unit'].replace('元/', '')}</span></p>"
+                        f"¥{_plan['price']}{_suffix_html}</p>"
                         f"<p style='color:#6E6E73;'>{_plan['desc']}</p>"
                         f"</div>",
                         unsafe_allow_html=True,
                     )
 
-            # 付款方式
+            # 付款方式（仅微信）
             st.markdown("#### 💳 付款方式")
 
-            # 检查是否有收款码图片
             from pathlib import Path as _Path
             _qr_dir = _Path(__file__).parent
             _wechat_qr = _qr_dir / "payment_qr_wechat.png"
-            _alipay_qr = _qr_dir / "payment_qr_alipay.png"
 
-            if _wechat_qr.exists() or _alipay_qr.exists():
-                _qr_cols = st.columns(2)
-                if _wechat_qr.exists():
-                    with _qr_cols[0]:
-                        st.image(str(_wechat_qr), caption="微信扫码付款", width=200)
-                if _alipay_qr.exists():
-                    with _qr_cols[1]:
-                        st.image(str(_alipay_qr), caption="支付宝扫码付款", width=200)
+            if _wechat_qr.exists():
+                st.image(str(_wechat_qr), caption="微信扫码付款", width=200)
             else:
                 st.info(
                     f"**微信转账充值**：添加微信 **{PAYMENT_CONTACT_WECHAT}**\n\n"
@@ -1562,16 +1906,16 @@ if st.session_state.rewrite_done and (_has_any_images or mode == "create"):
 
             st.markdown(
                 "**充值流程**：\n"
-                "1. 扫码添加微信 / 转账\n"
+                "1. 添加微信 / 扫码转账\n"
                 "2. 备注你的邀请码（当前：`" + st.session_state.invite_code + "`）\n"
                 "3. 确认收款后，额度秒到账\n"
             )
             st.divider()
 
-        # 免费版生图
+        # 体验版生图
         if btn_free or btn_regen_free:
-            with st.status("正在生成免费AI配图…", expanded=True) as _free_status:
-                _free_status.update(label="Gemini 正在绘制图片…（约10-20秒）")
+            with st.status("正在生成AI配图…", expanded=True) as _free_status:
+                _free_status.update(label="图片引擎正在绘制…（约10-20秒）")
                 imgs, s_prompt, s_err = generate_scene_nano_banana(
                     st.session_state.rewrite_result, industry
                 )
@@ -1585,24 +1929,24 @@ if st.session_state.rewrite_done and (_has_any_images or mode == "create"):
                 st.session_state["scene_tier"] = "free"
                 log_event(st.session_state.invite_code, "generate_scene_free",
                            st.session_state.industry_id, mode)
-                st.success(f"生成成功！共 {len(imgs)} 张 · 1:1 方图")
+                st.success(f"生成成功！共 {len(imgs)} 张 · 9:16 竖图")
             else:
                 log_event(st.session_state.invite_code, "generate_scene_free",
                            st.session_state.industry_id, mode, detail=s_err, success=False)
                 st.error(f"生成失败：{s_err}")
-                if s_err and "共享" in s_err:
-                    st.warning("💡 免费额度繁忙，建议换个时间段再试，或使用 Pro精品版")
+                if "额度" in (s_err or ""):
+                    st.warning("💡 额度暂时不足，请稍后再试或升级会员")
             st.rerun()
 
         # Pro 版生图（先扣配额，失败退回）
         if btn_pro and _has_quota:
             if not try_use_pro_quota(_code_now):
-                st.error("Pro 配额已用完")
+                st.error("配图额度已用完")
             else:
                 _pro_ok = False
                 try:
-                    with st.status("正在生成Pro精品配图…", expanded=True) as _pro_status:
-                        _pro_status.update(label="Imagen 4 Fast 正在绘制…（约15-30秒）")
+                    with st.status("正在生成精品配图…", expanded=True) as _pro_status:
+                        _pro_status.update(label="高清图片引擎正在绘制…（约15-30秒）")
                         imgs, s_prompt, s_err = generate_scene_with_imagen4(
                             st.session_state.rewrite_result, industry
                         )
@@ -1617,7 +1961,7 @@ if st.session_state.rewrite_done and (_has_any_images or mode == "create"):
                         log_event(st.session_state.invite_code, "generate_scene_pro",
                                    st.session_state.industry_id, mode)
                         new_left = _pro_left_now - 1
-                        st.success(f"生成成功！共 {len(imgs)} 张 · 9:16 竖图 · Pro 剩余 {new_left}/{PRO_GEN_LIMIT} 次")
+                        st.success(f"生成成功！共 {len(imgs)} 张 · 9:16 竖图 · 剩余 {new_left} 次")
                         _pro_ok = True
                     else:
                         st.error(f"生成失败：{s_err}")
@@ -1633,16 +1977,31 @@ if st.session_state.rewrite_done and (_has_any_images or mode == "create"):
                 st.rerun()
 
         if st.session_state.scene_images:
-            tier_label = "Pro精品" if st.session_state.get("scene_tier") == "pro" else "免费版"
+            tier_label = "精品版" if st.session_state.get("scene_tier") == "pro" else "体验版"
             _nc = img_cols(len(st.session_state.scene_images))
             _columns = st.columns(_nc)
             for i, img in enumerate(st.session_state.scene_images):
                 with _columns[i % _nc]:
                     st.image(img, caption=f"AI配图 {i+1}（{tier_label}）", use_container_width=True)
+                    _req = st.text_input("修改", key=f"edit_sc_{i}",
+                                         placeholder="不满意？描述修改要求…",
+                                         label_visibility="collapsed")
+                    if st.button("✏️ 修改这张", key=f"edit_sc_btn_{i}",
+                                 use_container_width=True) and _req:
+                        with st.spinner(f"正在修改第 {i+1} 张…"):
+                            _new, _err = edit_image_with_gemini(img, _req)
+                        if _new:
+                            st.session_state.scene_images[i] = _new
+                            del st.session_state[f"edit_sc_{i}"]
+                            st.success("修改成功！")
+                            st.rerun()
+                        else:
+                            st.error(f"修改失败：{_err}")
+            st.caption("✏️ 修改图片不消耗额度")
 
             with st.expander("查看场景描述提示词", expanded=False):
                 st.info(st.session_state.scene_prompt)
-                st.caption("DeepSeek 根据文案内容生成，发送给 AI 模型执行")
+                st.caption("语言模型根据文案内容生成，发送给图片引擎执行")
 
 
 # ═══════════════════════════════════════════════════════
@@ -1750,7 +2109,7 @@ if st.session_state.rewrite_done:
                 st.session_state.rewrite_result,
                 st.session_state.scene_images,
             )
-            tier_label = "Pro精品" if st.session_state.get("scene_tier") == "pro" else "免费版"
+            tier_label = "精品版" if st.session_state.get("scene_tier") == "pro" else "体验版"
             st.download_button(
                 f"🖼️ 文案+AI配图·{tier_label}（ZIP）",
                 data=zip_scene,
@@ -1780,12 +2139,48 @@ if st.session_state.rewrite_done:
         return title, body
 
     def _render_publish_block(full_text: str, block_key: str = ""):
-        """渲染单条笔记的发布准备区：标题复制 + 正文复制"""
+        """渲染单条笔记的发布准备区：可编辑标题/正文 + 复制按钮"""
         pub_title, pub_body = _split_title_body(full_text)
-        st.markdown("**📌 标题** （点右上角一键复制）")
-        st.code(pub_title, language=None)
-        st.markdown("**📝 正文** （点右上角一键复制）")
-        st.code(pub_body, language=None)
+        _bk = block_key or "main"
+
+        # ── 可编辑标题 ──
+        st.markdown("**📌 标题**（可直接编辑修改）")
+        st.text_input(
+            "标题", value=pub_title, key=f"pub_title_{_bk}",
+            label_visibility="collapsed",
+        )
+        st.markdown(
+            f'<button onclick="'
+            f"var t=document.getElementById('pub_title_{_bk}');"
+            f"if(!t)t=this.closest('.stVerticalBlock').querySelector('input');"
+            f"var v=t?t.value:'{pub_title.replace(chr(39), '')}';"
+            f"navigator.clipboard.writeText(v).then(()=>this.textContent='✅ 已复制标题')"
+            f'"'
+            f' style="width:100%;padding:10px;font-size:16px;font-weight:bold;border-radius:8px;'
+            f'border:2px solid #ff2442;color:#fff;background:#ff2442;cursor:pointer;'
+            f'margin-bottom:16px"'
+            f'>📋 复制标题</button>',
+            unsafe_allow_html=True,
+        )
+
+        # ── 可编辑正文 ──
+        st.markdown("**📝 正文**（可直接编辑修改）")
+        st.text_area(
+            "正文", value=pub_body, key=f"pub_body_{_bk}",
+            height=300, label_visibility="collapsed",
+        )
+        st.markdown(
+            f'<button onclick="'
+            f"var t=this.closest('.stVerticalBlock').querySelector('textarea');"
+            f"var v=t?t.value:'';"
+            f"navigator.clipboard.writeText(v).then(()=>this.textContent='✅ 已复制正文')"
+            f'"'
+            f' style="width:100%;padding:10px;font-size:16px;font-weight:bold;border-radius:8px;'
+            f'border:2px solid #ff2442;color:#fff;background:#ff2442;cursor:pointer;'
+            f'margin-bottom:8px"'
+            f'>📋 复制正文</button>',
+            unsafe_allow_html=True,
+        )
 
     if _is_batch_mode:
         # 批量模式：每条笔记一个 tab
@@ -1802,19 +2197,25 @@ if st.session_state.rewrite_done:
         # 单条模式
         _render_publish_block(st.session_state.rewrite_result)
 
-    st.link_button(
-        "🔗 打开小红书创作中心（网页版）",
-        url="https://creator.xiaohongshu.com/publish/publish",
-        use_container_width=True,
-    )
     st.info(
         "**发布步骤：**\n"
-        "1. 点上方按钮打开小红书创作中心\n"
-        "2. 复制标题 → 粘贴到标题栏\n"
-        "3. 复制正文 → 粘贴到正文区\n"
-        "4. 从上方下载的 ZIP 中拖入图片\n"
-        "5. 检查后点击「发布」",
-        icon="💡",
+        "1. 复制标题和正文（点上方红色按钮）\n"
+        "2. 长按保存图片到手机相册（或电脑下载ZIP）\n"
+        "3. 打开**小红书APP** → 点底部「+」发布\n"
+        "4. 选择图片 → 粘贴标题和正文 → 发布\n\n"
+        "💡 建议用小红书APP发布，网页版在手机上体验不佳",
+        icon="📱",
+    )
+    with st.expander("电脑端发布（网页版）"):
+        st.link_button(
+            "🔗 打开小红书创作中心",
+            url="https://creator.xiaohongshu.com/publish/publish",
+            use_container_width=True,
+        )
+        st.caption("网页版适合电脑端使用，可直接拖入图片发布")
+    st.caption(
+        "⚠️ 温馨提示：本工具生成的内容为AI辅助创作参考，建议融入个人风格后发布。"
+        "根据相关法规，AI生成内容可能需要标识，详见侧边栏「用户须知」。"
     )
 
 
@@ -2022,18 +2423,20 @@ if st.session_state.invite_code in ADMIN_CODES:
         else:
             st.caption("暂无数据")
 
-        # ══════════════ Pro 配额使用 ══════════════
-        st.markdown("### 💎 Pro 配额使用")
+        # ══════════════ 会员配额使用 ══════════════
+        st.markdown("### 💎 会员配额使用")
         quota_rows = conn.execute(
-            "SELECT invite_code, pro_gen_used, updated_at "
+            "SELECT invite_code, pro_gen_used, tier, updated_at "
             "FROM quota_usage ORDER BY pro_gen_used DESC"
         ).fetchall()
         if quota_rows:
+            _tier_labels = {k: v["name"] for k, v in TIER_PLANS.items()}
             df_quota = pd.DataFrame([
                 {
                     "邀请码": q["invite_code"],
+                    "会员等级": _tier_labels.get(q["tier"] or "free", "体验版"),
                     "已使用": q["pro_gen_used"],
-                    "免费额度": PRO_GEN_LIMIT,
+                    "总额度": PRO_GEN_LIMIT,
                     "剩余": max(PRO_GEN_LIMIT - q["pro_gen_used"], 0),
                     "最后使用": q["updated_at"][:16] if q["updated_at"] else "—",
                 }
@@ -2045,11 +2448,24 @@ if st.session_state.invite_code in ADMIN_CODES:
 
         # ══════════════ 充值管理 ══════════════
         st.markdown("### 💰 充值管理")
-        st.caption("用户付款后，在此为其增加 Pro 额度")
+        st.caption("用户付款后，在此为其增加额度并设置会员等级")
         with st.form("admin_recharge_form"):
             _rc_code = st.text_input("用户邀请码", placeholder="输入用户的邀请码")
-            _rc_amount = st.number_input("充值额度（次数）", min_value=1, max_value=1000, value=100, step=10)
-            _rc_note = st.text_input("备注（可选）", placeholder="如：月度会员 3月")
+            _rc_tier = st.selectbox(
+                "会员等级",
+                options=["plus", "pro", "promax"],
+                format_func=lambda t: {
+                    "plus": "达人版（¥99/50次）",
+                    "pro": "商家版（¥99/月/100次）",
+                    "promax": "企业版（¥399/月/300次 · 顶级文案）",
+                }.get(t, t),
+            )
+            _tier_quota = TIER_PLANS[_rc_tier]["quota"]
+            _rc_amount = st.number_input(
+                "充值额度（次数）", min_value=1, max_value=1000,
+                value=_tier_quota, step=10,
+            )
+            _rc_note = st.text_input("备注（可选）", placeholder="如：商家版 3月")
             _rc_submit = st.form_submit_button("确认充值", type="primary")
             if _rc_submit:
                 if not _rc_code.strip():
@@ -2057,16 +2473,17 @@ if st.session_state.invite_code in ADMIN_CODES:
                 else:
                     _rc_code_upper = _rc_code.strip().upper()
                     _before = get_pro_used(_rc_code_upper)
-                    if add_pro_quota(_rc_code_upper, _rc_amount):
+                    if add_pro_quota(_rc_code_upper, _rc_amount, tier=_rc_tier):
                         _after = get_pro_used(_rc_code_upper)
+                        _tier_name = TIER_PLANS[_rc_tier]["name"]
                         st.success(
                             f"充值成功！ 邀请码 **{_rc_code_upper}** "
-                            f"已增加 {_rc_amount} 次额度\n\n"
+                            f"升级为 **{_tier_name}**，增加 {_rc_amount} 次额度\n\n"
                             f"已使用：{_before} → {_after}"
                         )
                         log_event(
                             st.session_state.invite_code, "admin_recharge",
-                            detail=f"target={_rc_code_upper} amount={_rc_amount} note={_rc_note}",
+                            detail=f"target={_rc_code_upper} tier={_rc_tier} amount={_rc_amount} note={_rc_note}",
                         )
                     else:
                         st.error("充值失败，请重试")
@@ -2112,6 +2529,44 @@ if st.session_state.invite_code in ADMIN_CODES:
                 st.dataframe(df_events, use_container_width=True, hide_index=True)
             else:
                 st.caption("暂无事件")
+
+        # ══════════════ 自定义行业统计 ══════════════
+        st.markdown("### 🏷️ 自定义行业使用统计")
+        st.caption("用户通过「其他行业」使用的自定义行业名称")
+        custom_rows = conn.execute(
+            "SELECT input_profile, COUNT(*) as cnt, MAX(created_at) as last_used "
+            "FROM generation_history WHERE industry_id = 'custom' AND input_profile != '' "
+            "GROUP BY input_profile ORDER BY cnt DESC"
+        ).fetchall()
+        if custom_rows:
+            _custom_data = []
+            for cr in custom_rows:
+                try:
+                    _prof = json.loads(cr["input_profile"])
+                    _ind_name = _prof.get("industry_name", "未填写")
+                except (json.JSONDecodeError, TypeError):
+                    _ind_name = "未填写"
+                _custom_data.append({
+                    "行业名称": _ind_name,
+                    "使用次数": cr["cnt"],
+                    "最近使用": cr["last_used"][:16] if cr["last_used"] else "—",
+                })
+            # 合并相同行业名
+            _merged = {}
+            for d in _custom_data:
+                name = d["行业名称"]
+                if name in _merged:
+                    _merged[name]["使用次数"] += d["使用次数"]
+                    if d["最近使用"] > _merged[name]["最近使用"]:
+                        _merged[name]["最近使用"] = d["最近使用"]
+                else:
+                    _merged[name] = d
+            df_custom = pd.DataFrame(list(_merged.values()))
+            df_custom = df_custom.sort_values("使用次数", ascending=False).reset_index(drop=True)
+            st.dataframe(df_custom, use_container_width=True, hide_index=True)
+            st.caption("💡 如果某个行业被频繁使用，可以考虑将其升级为正式行业模板")
+        else:
+            st.caption("暂无自定义行业使用记录")
 
     except Exception as e:
         st.error(f"数据库读取失败：{e}")
