@@ -47,12 +47,19 @@ init_db()
 st.markdown("""
 <style>
 /* ── 隐藏 Streamlit 默认 UI 元素 ── */
-#MainMenu {visibility: hidden;}
-header {visibility: hidden;}
-footer {visibility: hidden;}
-[data-testid="stToolbar"] {display: none;}
-[data-testid="stDecoration"] {display: none;}
-.stDeployButton {display: none;}
+#MainMenu {visibility: hidden !important;}
+header {visibility: hidden !important; height: 0 !important;}
+footer {visibility: hidden !important; height: 0 !important;}
+[data-testid="stToolbar"] {display: none !important;}
+[data-testid="stDecoration"] {display: none !important;}
+[data-testid="stStatusWidget"] {display: none !important;}
+.stDeployButton {display: none !important;}
+.viewerBadge_container__r5tak {display: none !important;}
+.styles_viewerBadge__CvC9N {display: none !important;}
+[data-testid="manage-app-button"] {display: none !important;}
+._profileContainer_gzau3_53 {display: none !important;}
+.st-emotion-cache-ztfqz8 {display: none !important;}
+[class*="stActionButton"] {display: none !important;}
 
 /* ═══════════════════════════════════════════════
    LIGHT THEME — Apple + 小红书 Red
