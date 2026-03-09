@@ -36,6 +36,14 @@ def _get_db() -> sqlite3.Connection:
 def _init_tables(conn: sqlite3.Connection):
     """建表（如果不存在）"""
     conn.executescript("""
+        CREATE TABLE IF NOT EXISTS users (
+            phone        TEXT PRIMARY KEY,
+            invite_code  TEXT NOT NULL,
+            created_at   TEXT DEFAULT (datetime('now')),
+            last_login   TEXT DEFAULT (datetime('now')),
+            login_count  INTEGER DEFAULT 1
+        );
+        CREATE INDEX IF NOT EXISTS idx_users_invite ON users(invite_code);
         CREATE TABLE IF NOT EXISTS quota_usage (
             invite_code  TEXT PRIMARY KEY,
             pro_gen_used INTEGER DEFAULT 0,
@@ -339,6 +347,73 @@ def check_invite_code(code: str) -> bool:
         return code.strip().upper() in valid
     except Exception:
         return True
+
+
+def validate_phone(phone: str) -> bool:
+    """校验11位中国大陆手机号"""
+    return bool(re.match(r'^1[3-9]\d{9}$', phone.strip()))
+
+
+def register_or_login(phone: str, invite_code: str) -> dict:
+    """注册或登录用户，返回 {"ok": bool, "msg": str, "is_new": bool}"""
+    phone = phone.strip()
+    code = invite_code.strip().upper()
+    conn = None
+    try:
+        conn = _get_db()
+        row = conn.execute(
+            "SELECT phone, invite_code, login_count FROM users WHERE phone = ?",
+            (phone,),
+        ).fetchone()
+        if row:
+            # 已注册 — 更新登录信息
+            conn.execute(
+                "UPDATE users SET last_login = datetime('now'), login_count = login_count + 1 "
+                "WHERE phone = ?",
+                (phone,),
+            )
+            conn.commit()
+            return {"ok": True, "msg": "登录成功", "is_new": False,
+                    "invite_code": row["invite_code"]}
+        else:
+            # 新用户注册
+            conn.execute(
+                "INSERT INTO users (phone, invite_code) VALUES (?, ?)",
+                (phone, code),
+            )
+            conn.commit()
+            return {"ok": True, "msg": "注册成功", "is_new": True,
+                    "invite_code": code}
+    except sqlite3.Error as e:
+        return {"ok": False, "msg": f"数据库错误：{e}", "is_new": False,
+                "invite_code": code}
+    finally:
+        if conn:
+            conn.close()
+
+
+def get_all_users() -> list:
+    """获取所有注册用户（管理后台用）"""
+    conn = None
+    try:
+        conn = _get_db()
+        rows = conn.execute(
+            "SELECT u.phone, u.invite_code, u.created_at, u.last_login, u.login_count, "
+            "COALESCE(g.gen_count, 0) as gen_count, "
+            "COALESCE(g.last_gen, '') as last_gen "
+            "FROM users u "
+            "LEFT JOIN ("
+            "  SELECT invite_code, COUNT(*) as gen_count, MAX(created_at) as last_gen "
+            "  FROM generation_history GROUP BY invite_code"
+            ") g ON u.invite_code = g.invite_code "
+            "ORDER BY u.last_login DESC"
+        ).fetchall()
+        return [dict(r) for r in rows]
+    except sqlite3.Error:
+        return []
+    finally:
+        if conn:
+            conn.close()
 
 
 def get_api_key(name: str) -> str:

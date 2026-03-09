@@ -82,7 +82,7 @@ PRO_GEN_LIMIT = FREE_QUOTA
 # ═══════════════════════════════════════════════════════
 #  管理员邀请码
 # ═══════════════════════════════════════════════════════
-ADMIN_CODES = {"ADMIN01"}
+ADMIN_CODES = {"WYH15606343555"}
 
 
 # ═══════════════════════════════════════════════════════
@@ -745,6 +745,7 @@ INDUSTRIES = {
 DEFAULTS = dict(
     authed=False,
     invite_code="",
+    user_phone="",
     industry_id=None,
     industry_preview="",   # 第一次点击：预览选中（高亮），再次点击确认
     selected_mode=None,    # "rewrite" 或 "create"，由用户选择

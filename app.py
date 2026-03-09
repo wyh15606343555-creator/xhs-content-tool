@@ -20,7 +20,8 @@ from utils import (
     friendly_api_error, img_cols,
     get_pro_used, has_pro_quota, try_use_pro_quota, refund_pro_quota,
     add_pro_quota, get_user_tier,
-    check_invite_code, make_zip, make_batch_zip,
+    check_invite_code, validate_phone, register_or_login, get_all_users,
+    make_zip, make_batch_zip,
 )
 from api import (
     try_extract_xhs, download_image_url,
@@ -183,7 +184,7 @@ p, .stMarkdown p { color: #6E6E73 !important; }
 .stTextInput input:focus,
 .stTextArea textarea:focus {
     border-color: #FF2442 !important;
-    box-shadow: 0 0 0 3px rgba(255,36,66,0.1) !important;
+    box-shadow: none !important;
     outline: none !important;
 }
 .stTextInput input::placeholder,
@@ -588,7 +589,7 @@ for _k, _v in DEFAULTS.items():
 
 
 # ═══════════════════════════════════════════════════════
-#  页面1：邀请码门禁
+#  页面1：邀请码 + 手机号登录
 # ═══════════════════════════════════════════════════════
 if not st.session_state.authed:
     st.markdown("""
@@ -599,29 +600,49 @@ if not st.session_state.authed:
             </svg>
         </div>
         <div class="gate-title"><span class="gate-accent">小红书</span>内容 Agent</div>
-        <div class="gate-sub">内测版本 · 请输入邀请码进入</div>
+        <div class="gate-sub">内测版本 · 邀请码 + 手机号注册</div>
     </div>
     """, unsafe_allow_html=True)
 
     col_l, col_c, col_r = st.columns([1, 2, 1])
     with col_c:
-        st.markdown("### 输入邀请码")
-        code_input = st.text_input(
+        st.markdown("### 登录 / 注册")
+        _phone_input = st.text_input(
+            "手机号",
+            placeholder="请输入11位手机号",
+            max_chars=11,
+        )
+        _code_input = st.text_input(
             "邀请码",
-            placeholder="如：TEST01",
-            label_visibility="collapsed",
+            placeholder="请输入邀请码",
             max_chars=20,
         )
-        if st.button("进入 →", type="primary", use_container_width=True):
-            if check_invite_code(code_input):
-                st.session_state.authed = True
-                st.session_state.invite_code = code_input.strip().upper()
-                log_event(code_input.strip().upper(), "login")
-                st.rerun()
-            else:
-                st.error("邀请码无效，请联系 David 获取")
+        st.caption("填写完成后自动登录，首次使用自动注册")
 
-        st.caption("没有邀请码？联系 David 申请测试资格")
+        # 自动登录：两个字段都填好后自动进入
+        _phone = (_phone_input or "").strip()
+        _code = (_code_input or "").strip().upper()
+        _gate_error = ""
+        if _phone and _code:
+            if not validate_phone(_phone):
+                _gate_error = "手机号格式不正确，请输入11位手机号"
+            elif not check_invite_code(_code):
+                _gate_error = "邀请码无效，请联系 David 获取"
+            else:
+                result = register_or_login(_phone, _code)
+                if result["ok"]:
+                    st.session_state.authed = True
+                    st.session_state.user_phone = _phone
+                    st.session_state.invite_code = result["invite_code"]
+                    log_event(result["invite_code"], "login",
+                              detail=f"phone={_phone} new={result['is_new']}")
+                    st.rerun()
+                else:
+                    _gate_error = result["msg"]
+        if _gate_error:
+            st.error(_gate_error)
+
+        st.caption("没有邀请码？联系 David：15606343555")
 
         st.divider()
         st.caption(
@@ -638,7 +659,12 @@ if not st.session_state.authed:
 #  侧边栏
 # ═══════════════════════════════════════════════════════
 with st.sidebar:
-    st.markdown(f"**欢迎测试！** `{st.session_state.invite_code}`")
+    _phone_display = st.session_state.get("user_phone", "")
+    if _phone_display:
+        _phone_masked = _phone_display[:3] + "****" + _phone_display[7:]
+        st.markdown(f"**欢迎！** {_phone_masked} · `{st.session_state.invite_code}`")
+    else:
+        st.markdown(f"**欢迎测试！** `{st.session_state.invite_code}`")
     st.divider()
 
     st.markdown("**📍 所在城市/区域**")
@@ -2400,18 +2426,43 @@ if st.session_state.invite_code in ADMIN_CODES:
         else:
             st.caption("暂无数据")
 
+        # ══════════════ 注册用户列表（手机号+使用频率） ══════════════
+        st.markdown("### 📱 注册用户列表")
+        all_users = get_all_users()
+        if all_users:
+            df_reg = pd.DataFrame([
+                {
+                    "手机号": u["phone"],
+                    "邀请码": u["invite_code"],
+                    "生成次数": u["gen_count"],
+                    "登录次数": u["login_count"],
+                    "注册时间": u["created_at"][:16] if u["created_at"] else "—",
+                    "最后登录": u["last_login"][:16] if u["last_login"] else "—",
+                    "最后生成": u["last_gen"][:16] if u["last_gen"] else "—",
+                }
+                for u in all_users
+            ])
+            st.dataframe(df_reg, use_container_width=True, hide_index=True)
+            st.caption(f"共 {len(all_users)} 个注册用户")
+        else:
+            st.caption("暂无注册用户")
+
         # ══════════════ 用户活跃排行 ══════════════
         st.markdown("### 👤 用户活跃排行")
         user_rows = conn.execute(
-            "SELECT invite_code, COUNT(*) as gen_count, "
-            "MAX(created_at) as last_active, "
-            "COUNT(DISTINCT industry_id) as industry_count "
-            "FROM generation_history GROUP BY invite_code "
+            "SELECT g.invite_code, COUNT(*) as gen_count, "
+            "MAX(g.created_at) as last_active, "
+            "COUNT(DISTINCT g.industry_id) as industry_count, "
+            "COALESCE(u.phone, '—') as phone "
+            "FROM generation_history g "
+            "LEFT JOIN users u ON g.invite_code = u.invite_code "
+            "GROUP BY g.invite_code "
             "ORDER BY gen_count DESC LIMIT 20"
         ).fetchall()
         if user_rows:
             df_users = pd.DataFrame([
                 {
+                    "手机号": r["phone"],
                     "邀请码": r["invite_code"],
                     "生成次数": r["gen_count"],
                     "涉及行业数": r["industry_count"],
