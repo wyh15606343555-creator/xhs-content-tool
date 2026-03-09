@@ -46,6 +46,14 @@ init_db()
 
 st.markdown("""
 <style>
+/* ── 隐藏 Streamlit 默认 UI 元素 ── */
+#MainMenu {visibility: hidden;}
+header {visibility: hidden;}
+footer {visibility: hidden;}
+[data-testid="stToolbar"] {display: none;}
+[data-testid="stDecoration"] {display: none;}
+.stDeployButton {display: none;}
+
 /* ═══════════════════════════════════════════════
    LIGHT THEME — Apple + 小红书 Red
    Background: #FFFFFF · Text: #1D1D1F · Accent: #FF2442
