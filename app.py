@@ -17,13 +17,13 @@ except ImportError:
 
 from config import (
     INDUSTRIES, INDUSTRY_ICONS, ICON_ATTRS, DEFAULTS,
-    PRO_GEN_LIMIT, FREE_QUOTA, ADMIN_CODES,
-    TIER_PLANS, PAID_PLANS, PAYMENT_CONTACT_WECHAT,
+    PRO_GEN_LIMIT, ADMIN_CODES,
+    TIER_PLANS, PAYMENT_CONTACT_WECHAT,
 )
 from utils import (
     init_db, log_event, save_generation, get_history, get_db,
     friendly_api_error, img_cols,
-    get_pro_used, has_pro_quota, try_use_pro_quota, refund_pro_quota,
+    get_pro_used, has_pro_quota,
     add_pro_quota, get_user_tier,
     check_invite_code, validate_phone, register_or_login, get_all_users,
     make_zip, make_batch_zip,
@@ -33,7 +33,6 @@ from api import (
     rewrite_with_deepseek, generate_original_content,
     rewrite_with_claude, generate_original_with_claude,
     generate_dynamic_image_prompt,
-    generate_scene_nano_banana, generate_scene_with_imagen4,
     edit_image_with_gemini,
     remove_watermark_and_protect,
     stealth_anti_hash,
@@ -1919,197 +1918,185 @@ if st.session_state.rewrite_done and (_has_any_images or mode == "create"):
 
             st.divider()
 
-        # ── 方案B：AI 生成配图（体验版 + 精品版）──
-        st.markdown("**🖼️ 方案B：AI 生成场景配图** — 无需上传照片，AI 根据文案内容创作")
+        # ── 方案B：AI 场景换装（基于用户上传的商品照片）──
+        if st.session_state.note_images:
+            st.markdown("**🖼️ 方案B：AI 场景换装** — 保持商品原样，更换场景风格")
 
-        # 多用户额度提示
-        st.info(
-            "**🆓 体验版/达人版**：9:16 竖图，高速生成\n\n"
-            "**⭐ 商家版**：9:16 竖图，最高画质\n\n"
-            "所有方案均为 9:16 竖图，完美适配小红书。"
-        )
+            _scene_styles = {
+                "实景摄影": {
+                    "desc": "真实场景拍摄效果，自然光线、环境道具",
+                    "prompt": (
+                        "Transform the background into a realistic professional product photography scene. "
+                        "Use natural lighting, real-world props and surfaces (marble, wood, fabric). "
+                        "Create depth with bokeh background. Studio-quality commercial photography look."
+                    ),
+                },
+                "油画风格": {
+                    "desc": "经典油画笔触，艺术感强烈",
+                    "prompt": (
+                        "Transform the background and atmosphere into a classical oil painting style. "
+                        "Apply visible brushstroke textures, rich warm color palette, dramatic chiaroscuro lighting. "
+                        "Renaissance or Impressionist painting feel. The product remains photorealistic."
+                    ),
+                },
+                "水彩插画": {
+                    "desc": "清新水彩晕染，文艺柔美",
+                    "prompt": (
+                        "Transform the background into a delicate watercolor illustration style. "
+                        "Soft color washes, gentle bleeding edges, hand-painted floral or nature elements. "
+                        "Light pastel tones, dreamy and artistic. The product remains photorealistic."
+                    ),
+                },
+                "赛博朋克": {
+                    "desc": "霓虹灯光、未来科技感",
+                    "prompt": (
+                        "Transform the background into a cyberpunk neon-lit scene. "
+                        "Vibrant neon pink, cyan, and purple lighting. Futuristic cityscape or tech environment. "
+                        "Reflective wet surfaces, holographic elements. The product remains photorealistic."
+                    ),
+                },
+                "自然户外": {
+                    "desc": "山水花草、阳光沙滩等自然环境",
+                    "prompt": (
+                        "Place the product in a beautiful natural outdoor scene. "
+                        "Lush greenery, golden sunlight, or serene beach/mountain landscape. "
+                        "Natural elements like flowers, leaves, pebbles as props. Organic and refreshing atmosphere."
+                    ),
+                },
+                "极简纯色": {
+                    "desc": "纯色背景、干净利落，突出商品本身",
+                    "prompt": (
+                        "Place the product on a clean minimalist solid-color background. "
+                        "Soft gradient or pure white/grey/pastel backdrop. Professional studio lighting. "
+                        "No distractions, maximum focus on the product. Apple-style product photography."
+                    ),
+                },
+                "节日氛围": {
+                    "desc": "春节、圣诞、情人节等节日场景",
+                    "prompt": (
+                        "Place the product in a festive holiday celebration scene. "
+                        "Warm fairy lights, gift boxes, ribbons, confetti, seasonal decorations. "
+                        "Cozy and celebratory atmosphere. Rich warm colors."
+                    ),
+                },
+                "中国风": {
+                    "desc": "水墨山水、古典元素、国潮美学",
+                    "prompt": (
+                        "Place the product in a Chinese traditional aesthetic scene. "
+                        "Ink wash painting mountains, classical architecture elements, red and gold accents. "
+                        "Guochao (national trend) style with modern flair. Elegant and culturally rich."
+                    ),
+                },
+                "自定义场景": {
+                    "desc": "输入你想要的任何场景描述",
+                    "prompt": "",
+                },
+            }
 
-        _code_now = st.session_state.invite_code
-        _pro_used_now = get_pro_used(_code_now)
-        _pro_left_now = PRO_GEN_LIMIT - _pro_used_now
-        _has_quota = _pro_left_now > 0
-
-        col_free, col_pro = st.columns(2)
-
-        with col_free:
-            st.markdown("**🆓 体验版** · 标准配图 · 9:16竖图")
-            btn_free = st.button(
-                "🖼️ 生成免费AI配图（2张）",
-                key="btn_gen_free",
-                use_container_width=True,
+            _scene_choice = st.radio(
+                "选择场景风格",
+                list(_scene_styles.keys()),
+                horizontal=True,
+                key="scene_style_b",
+                help="AI 会保持你的商品完全不变，只更换周围的场景和氛围",
             )
-            if st.session_state.scene_images and st.session_state.get("scene_tier") == "free":
-                btn_regen_free = st.button("🔄 换一批（体验版）", key="btn_regen_free", use_container_width=True)
-            else:
-                btn_regen_free = False
+            st.caption(_scene_styles[_scene_choice]["desc"])
 
-        with col_pro:
-            st.markdown(f"**⭐ 精品版** · 高清配图 · 剩余 {_pro_left_now} 次")
-            if _has_quota:
-                btn_pro = st.button(
-                    "⭐ 生成精品配图（2张）· 消耗1次",
-                    key="btn_gen_pro",
-                    type="primary",
-                    use_container_width=True,
-                )
-            else:
-                st.button(
-                    "⭐ 体验额度已用完",
-                    key="btn_gen_pro_disabled",
-                    disabled=True,
-                    use_container_width=True,
-                )
-                btn_pro = False
-
-        # ── 额度用完：显示4档会员升级引导 ──
-        if not _has_quota:
-            st.divider()
-            st.markdown("### 🎉 恭喜你完成了试用体验！")
-            st.markdown(
-                f"你已经使用完了 **{FREE_QUOTA}次免费体验额度**，"
-                "升级会员继续享受 9:16 竖图 + 高清画质 + 小红书完美适配："
+            _scene_preserve_rule = (
+                "CRITICAL RULE: Do NOT change, alter, or replace the main product/subject in any way. "
+                "Keep the EXACT same product shape, color, design, logo, packaging, and all visual details 100% intact. "
+                "Only change the background, surrounding scene, lighting environment, and decorative elements. "
+                "The product must remain photorealistic even if the background style changes. "
+                "Remove any text overlays or watermarks."
             )
 
-            # 3档付费方案卡片
-            _plan_cols = st.columns(len(PAID_PLANS))
-            for _pc, _plan in zip(_plan_cols, PAID_PLANS):
-                with _pc:
-                    _tag = _plan.get("tag", "")
-                    _tag_html = f' <span style="background:#FF2442;color:white;padding:2px 8px;border-radius:10px;font-size:12px;">{_tag}</span>' if _tag else ""
-                    # 价格显示
-                    if _plan["unit"]:
-                        _price_suffix = _plan["unit"].replace("元/", "")
-                    else:
-                        _price_suffix = ""
-                    _suffix_html = f'<span style="font-size:14px;color:#86868B;">/{_price_suffix}</span>' if _price_suffix else ""
-                    st.markdown(
-                        f"<div style='border:2px solid #FF2442;border-radius:12px;padding:16px;text-align:center;'>"
-                        f"<h4 style='margin:0;'>{_plan['name']}{_tag_html}</h4>"
-                        f"<p style='font-size:28px;font-weight:bold;color:#FF2442;margin:8px 0;'>"
-                        f"¥{_plan['price']}{_suffix_html}</p>"
-                        f"<p style='color:#6E6E73;'>{_plan['desc']}</p>"
-                        f"</div>",
-                        unsafe_allow_html=True,
-                    )
-
-            # 付款方式（仅微信）
-            st.markdown("#### 💳 付款方式")
-
-            from pathlib import Path as _Path
-            _qr_dir = _Path(__file__).parent
-            _wechat_qr = _qr_dir / "payment_qr_wechat.png"
-
-            if _wechat_qr.exists():
-                st.image(str(_wechat_qr), caption="微信扫码付款", width=200)
+            if _scene_choice == "自定义场景":
+                _custom_scene = st.text_area(
+                    "描述你想要的场景",
+                    placeholder="例如：放在樱花树下的木桌上，阳光透过花瓣洒下来…",
+                    key="custom_scene_prompt_b",
+                    height=80,
+                )
+                _scene_prompt_b = (
+                    f"{_scene_preserve_rule}\n\n"
+                    f"Scene description: {_custom_scene}"
+                ) if _custom_scene else ""
             else:
-                st.info(
-                    f"**微信转账充值**：添加微信 **{PAYMENT_CONTACT_WECHAT}**\n\n"
-                    "转账时请备注你的**邀请码**，充值后即刻到账！"
+                _scene_prompt_b = (
+                    f"{_scene_preserve_rule}\n\n"
+                    f"{_scene_styles[_scene_choice]['prompt']}"
                 )
 
-            st.markdown(
-                "**充值流程**：\n"
-                "1. 添加微信 / 扫码转账\n"
-                "2. 备注你的邀请码（当前：`" + st.session_state.invite_code + "`）\n"
-                "3. 确认收款后，额度秒到账\n"
-            )
-            st.divider()
+            with st.expander("查看场景指令", expanded=False):
+                st.code(_scene_prompt_b or "请输入自定义场景描述", language=None)
 
-        # 体验版生图
-        if btn_free or btn_regen_free:
-            with st.status("正在生成AI配图…", expanded=True) as _free_status:
-                _free_status.update(label="图片引擎正在绘制…（约10-20秒）")
-                imgs, s_prompt, s_err = generate_scene_nano_banana(
-                    st.session_state.rewrite_result, industry
-                )
-                if imgs:
-                    _free_status.update(label="生成完成！", state="complete", expanded=False)
+            _can_scene = bool(_scene_prompt_b)
+            if st.button("🎬 一键场景换装", type="primary", key="btn_scene_b", disabled=not _can_scene):
+                n = len(st.session_state.note_images)
+                prog_b = st.progress(0, text="准备场景换装…")
+                scene_results, scene_errors = [], []
+                for i, img in enumerate(st.session_state.note_images):
+                    prog_b.progress(i / n, text=f"正在为第 {i+1}/{n} 张换装场景…")
+                    result_img, err_msg = edit_image_with_gemini(img, _scene_prompt_b)
+                    scene_results.append(result_img)
+                    if err_msg:
+                        scene_errors.append(f"图片 {i+1}：{err_msg}")
+                prog_b.progress(1.0, text="场景换装完成！")
+                st.session_state.scene_images = scene_results
+                st.session_state.scene_prompt = _scene_prompt_b
+                st.session_state["scene_tier"] = "scene_b"
+                log_event(st.session_state.invite_code, "scene_change_b",
+                           st.session_state.industry_id, mode,
+                           detail=json.dumps({"count": n, "style": _scene_choice}))
+                ok = sum(1 for x in scene_results if x)
+                if ok == n:
+                    st.success(f"全部 {n} 张场景换装成功！")
+                elif ok:
+                    st.warning(f"{ok}/{n} 张成功，{n-ok} 张失败")
                 else:
-                    _free_status.update(label="生成失败", state="error")
-            if imgs:
-                st.session_state.scene_images = imgs
-                st.session_state.scene_prompt = s_prompt
-                st.session_state["scene_tier"] = "free"
-                log_event(st.session_state.invite_code, "generate_scene_free",
-                           st.session_state.industry_id, mode)
-                st.success(f"生成成功！共 {len(imgs)} 张 · 9:16 竖图")
-            else:
-                log_event(st.session_state.invite_code, "generate_scene_free",
-                           st.session_state.industry_id, mode, detail=s_err, success=False)
-                st.error(f"生成失败：{s_err}")
-                if "额度" in (s_err or ""):
-                    st.warning("💡 额度暂时不足，请稍后再试或升级会员")
-            st.rerun()
-
-        # Pro 版生图（先扣配额，失败退回）
-        if btn_pro and _has_quota:
-            if not try_use_pro_quota(_code_now):
-                st.error("配图额度已用完")
-            else:
-                _pro_ok = False
-                try:
-                    with st.status("正在生成精品配图…", expanded=True) as _pro_status:
-                        _pro_status.update(label="高清图片引擎正在绘制…（约15-30秒）")
-                        imgs, s_prompt, s_err = generate_scene_with_imagen4(
-                            st.session_state.rewrite_result, industry
-                        )
-                        if imgs:
-                            _pro_status.update(label="生成完成！", state="complete", expanded=False)
-                        else:
-                            _pro_status.update(label="生成失败", state="error")
-                    if imgs:
-                        st.session_state.scene_images = imgs
-                        st.session_state.scene_prompt = s_prompt
-                        st.session_state["scene_tier"] = "pro"
-                        log_event(st.session_state.invite_code, "generate_scene_pro",
-                                   st.session_state.industry_id, mode)
-                        new_left = _pro_left_now - 1
-                        st.success(f"生成成功！共 {len(imgs)} 张 · 9:16 竖图 · 剩余 {new_left} 次")
-                        _pro_ok = True
-                    else:
-                        st.error(f"生成失败：{s_err}")
-                        log_event(st.session_state.invite_code, "generate_scene_pro",
-                                   st.session_state.industry_id, mode, detail=s_err, success=False)
-                except Exception as _pro_exc:
-                    st.error(f"生成异常：{friendly_api_error(_pro_exc)}")
-                    log_event(st.session_state.invite_code, "generate_scene_pro",
-                               st.session_state.industry_id, mode, detail=str(_pro_exc)[:200], success=False)
-                finally:
-                    if not _pro_ok:
-                        refund_pro_quota(_code_now)
+                    st.error("场景换装全部失败，请重试")
+                if scene_errors:
+                    with st.expander("查看错误详情"):
+                        for e in scene_errors:
+                            st.caption(e)
                 st.rerun()
 
-        if st.session_state.scene_images:
-            tier_label = "精品版" if st.session_state.get("scene_tier") == "pro" else "体验版"
-            _nc = img_cols(len(st.session_state.scene_images))
-            _columns = st.columns(_nc)
-            for i, img in enumerate(st.session_state.scene_images):
-                with _columns[i % _nc]:
-                    st.image(img, caption=f"AI配图 {i+1}（{tier_label}）", use_container_width=True)
-                    _req = st.text_input("修改", key=f"edit_sc_{i}",
-                                         placeholder="不满意？描述修改要求…",
-                                         label_visibility="collapsed")
-                    if st.button("✏️ 修改这张", key=f"edit_sc_btn_{i}",
-                                 use_container_width=True) and _req:
-                        with st.spinner(f"正在修改第 {i+1} 张…"):
-                            _new, _err = edit_image_with_gemini(img, _req)
-                        if _new:
-                            st.session_state.scene_images[i] = _new
-                            del st.session_state[f"edit_sc_{i}"]
-                            st.success("修改成功！")
-                            st.rerun()
+            if st.session_state.scene_images and st.session_state.get("scene_tier") == "scene_b":
+                for i, (orig, sc) in enumerate(
+                    zip(st.session_state.note_images, st.session_state.scene_images)
+                ):
+                    c1, c2 = st.columns(2)
+                    with c1:
+                        st.image(orig, caption=f"原图 {i+1}", use_container_width=True)
+                    with c2:
+                        if sc:
+                            st.image(sc, caption=f"场景换装 {i+1}", use_container_width=True)
+                            _ec1, _ec2 = st.columns([3, 1])
+                            with _ec1:
+                                _req = st.text_input("修改", key=f"edit_sc_{i}",
+                                                     placeholder="不满意？描述修改要求…",
+                                                     label_visibility="collapsed")
+                            with _ec2:
+                                _ebtn = st.button("✏️ 修改", key=f"edit_sc_btn_{i}",
+                                                  use_container_width=True)
+                            if _ebtn and _req:
+                                with st.spinner(f"正在修改第 {i+1} 张…"):
+                                    _new, _err = edit_image_with_gemini(sc, _req)
+                                if _new:
+                                    st.session_state.scene_images[i] = _new
+                                    del st.session_state[f"edit_sc_{i}"]
+                                    st.success("修改成功！")
+                                    st.rerun()
+                                else:
+                                    st.error(f"修改失败：{_err}")
                         else:
-                            st.error(f"修改失败：{_err}")
-            st.caption("✏️ 修改图片不消耗额度")
+                            st.warning(f"图片 {i+1} 换装失败")
+                st.caption("✏️ 修改图片不消耗额度")
 
-            with st.expander("查看场景描述提示词", expanded=False):
-                st.info(st.session_state.scene_prompt)
-                st.caption("语言模型根据文案内容生成，发送给图片引擎执行")
+                with st.expander("查看场景描述提示词", expanded=False):
+                    st.info(st.session_state.scene_prompt)
+        else:
+            st.info("**🖼️ 方案B：AI 场景换装** — 请先在上方上传商品照片，即可使用场景换装功能")
 
 
 # ═══════════════════════════════════════════════════════
