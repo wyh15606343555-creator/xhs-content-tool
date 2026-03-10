@@ -1768,20 +1768,80 @@ if st.session_state.rewrite_done and (_has_any_images or mode == "create"):
 
         # ── 方案A：美化原图（仅当用户已上传图片时显示）──
         if st.session_state.note_images:
-            st.markdown("**📸 方案A：美化原图** — 🆓 免费 · AI 根据文案氛围调整光线 / 色调 / 质感")
-            img_prompt_a = (
-                st.session_state.dynamic_image_prompt
-                if st.session_state.dynamic_image_prompt
-                else industry["image_prompt"]
-            )
-            with st.expander("查看专属美化指令", expanded=False):
-                if st.session_state.dynamic_image_prompt:
-                    st.info(st.session_state.dynamic_image_prompt)
-                    st.caption("语言模型根据你的文案情绪自动生成的图片处理指令")
-                else:
-                    st.code(img_prompt_a, language=None)
+            st.markdown("**📸 方案A：美化原图** — 🆓 免费 · 保持商品原样，仅优化光线/色调/氛围")
 
-            if st.button("🎨 一键美化原图", type="primary", key="btn_img"):
+            _beautify_options = {
+                "智能匹配": "根据文案情绪自动匹配最佳美化效果",
+                "暖调氛围": "温暖柔和的光线，适合美食、家居、生活类",
+                "清新明亮": "高亮度、低饱和，适合护肤、穿搭、日系风格",
+                "高级质感": "低对比、高质感，适合奢侈品、数码、商务类",
+                "鲜艳活力": "高饱和度、强对比，适合运动、户外、潮牌类",
+                "自定义": "输入你自己的美化需求",
+            }
+            _beautify_choice = st.radio(
+                "选择美化风格",
+                list(_beautify_options.keys()),
+                horizontal=True,
+                key="beautify_style",
+                help="所有方案都会保持商品原样不变，仅调整光线和氛围",
+            )
+            st.caption(_beautify_options[_beautify_choice])
+
+            _preserve_rule = (
+                "CRITICAL RULE: Do NOT change, alter, or replace the main product/subject. "
+                "Keep the exact same product shape, color, design, logo, packaging, and all visual details intact. "
+                "Only enhance the surrounding lighting, background atmosphere, and color grading. "
+                "Remove any text overlays or watermarks."
+            )
+
+            if _beautify_choice == "智能匹配":
+                img_prompt_a = (
+                    st.session_state.dynamic_image_prompt
+                    if st.session_state.dynamic_image_prompt
+                    else industry["image_prompt"]
+                )
+                img_prompt_a = f"{_preserve_rule}\n\nStyle direction: {img_prompt_a}"
+            elif _beautify_choice == "暖调氛围":
+                img_prompt_a = (
+                    f"{_preserve_rule}\n\n"
+                    "Apply warm golden-hour lighting. Add soft warm tones (amber, honey). "
+                    "Create a cozy, inviting atmosphere. Slightly soften shadows for a gentle feel."
+                )
+            elif _beautify_choice == "清新明亮":
+                img_prompt_a = (
+                    f"{_preserve_rule}\n\n"
+                    "Increase brightness and add airy, light atmosphere. Use cool-neutral white balance. "
+                    "Reduce saturation slightly for a clean, fresh Japanese-style look. Soft even lighting."
+                )
+            elif _beautify_choice == "高级质感":
+                img_prompt_a = (
+                    f"{_preserve_rule}\n\n"
+                    "Apply low-contrast, muted luxury toning. Use subtle shadow detail and refined highlights. "
+                    "Create an editorial, premium feel. Slightly desaturate for sophisticated elegance."
+                )
+            elif _beautify_choice == "鲜艳活力":
+                img_prompt_a = (
+                    f"{_preserve_rule}\n\n"
+                    "Boost color saturation and vibrancy. Increase contrast for a punchy, energetic look. "
+                    "Enhance blue skies, green foliage, and vivid product colors. Dynamic, eye-catching lighting."
+                )
+            else:
+                _custom_prompt = st.text_area(
+                    "输入你的美化需求",
+                    placeholder="例如：背景虚化一点，光线柔和一些，整体偏粉色调…",
+                    key="custom_beautify_prompt",
+                    height=80,
+                )
+                img_prompt_a = (
+                    f"{_preserve_rule}\n\n"
+                    f"User request: {_custom_prompt}"
+                ) if _custom_prompt else ""
+
+            with st.expander("查看美化指令", expanded=False):
+                st.code(img_prompt_a or "请输入自定义需求", language=None)
+
+            _can_beautify = bool(img_prompt_a)
+            if st.button("🎨 一键美化原图", type="primary", key="btn_img", disabled=not _can_beautify):
                 n = len(st.session_state.note_images)
                 prog2 = st.progress(0, text="准备处理…")
                 edited, errors = [], []

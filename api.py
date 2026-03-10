@@ -337,10 +337,13 @@ def generate_dynamic_image_prompt(copy_text: str, industry: dict) -> str:
         "Rules:\n"
         "1. Extract 2-3 visual mood keywords from the post (e.g. warm, cozy, vibrant, elegant, fresh, moody, bright).\n"
         "2. Adjust lighting, color tone, and atmosphere to MATCH the post's emotional style.\n"
-        "3. Do NOT change the main subject, composition, or add new elements.\n"
-        "4. Always include: 'Remove any text overlays or watermarks.'\n"
-        "5. Keep the result realistic and natural — not AI-generated looking.\n"
-        "6. Output: 3-5 English sentences only. No Chinese, no explanations.\n\n"
+        "3. CRITICAL: Do NOT change, alter, or replace the main product/subject in the photo. "
+        "Keep the exact same product shape, color, design, logo, packaging, and all visual details. "
+        "Only enhance the surrounding lighting, background atmosphere, and color grading.\n"
+        "4. Do NOT change composition, perspective, or add/remove any objects.\n"
+        "5. Always include: 'Remove any text overlays or watermarks.'\n"
+        "6. Keep the result realistic and natural — not AI-generated looking.\n"
+        "7. Output: 3-5 English sentences only. No Chinese, no explanations.\n\n"
         f"Industry: {industry['label']}"
     )
     resp = client.chat.completions.create(
