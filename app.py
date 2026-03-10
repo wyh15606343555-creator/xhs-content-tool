@@ -632,17 +632,19 @@ if not st.session_state.authed:
             placeholder="请输入邀请码",
             max_chars=20,
         )
-        st.caption("填写完成后自动登录，首次使用自动注册")
+        _login_clicked = st.button("登 录", use_container_width=True, type="primary")
 
-        # 自动登录：两个字段都填好后自动进入
         _phone = (_phone_input or "").strip()
         _code = (_code_input or "").strip().upper()
-        _gate_error = ""
-        if _phone and _code:
-            if not validate_phone(_phone):
-                _gate_error = "手机号格式不正确，请输入11位手机号"
+        if _login_clicked:
+            if not _phone:
+                st.error("请输入手机号")
+            elif not _code:
+                st.error("请输入邀请码")
+            elif not validate_phone(_phone):
+                st.error("手机号格式不正确，请输入11位手机号")
             elif not check_invite_code(_code):
-                _gate_error = "邀请码无效，请联系 David 获取"
+                st.error("邀请码无效，请联系 David 获取")
             else:
                 result = register_or_login(_phone, _code)
                 if result["ok"]:
@@ -653,9 +655,9 @@ if not st.session_state.authed:
                               detail=f"phone={_phone} new={result['is_new']}")
                     st.rerun()
                 else:
-                    _gate_error = result["msg"]
-        if _gate_error:
-            st.error(_gate_error)
+                    st.error(result["msg"])
+
+        st.caption("首次使用自动注册")
 
         st.caption("没有邀请码？联系 David：15606343555")
 
