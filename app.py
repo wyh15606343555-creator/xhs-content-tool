@@ -9,6 +9,11 @@ import json
 import pandas as pd
 from datetime import datetime, timedelta
 from PIL import Image
+try:
+    from pillow_heif import register_heif_opener
+    register_heif_opener()
+except ImportError:
+    pass
 
 from config import (
     INDUSTRIES, INDUSTRY_ICONS, ICON_ATTRS, DEFAULTS,
@@ -1132,7 +1137,7 @@ if mode == "rewrite":
     with col_up:
         extra_imgs = st.file_uploader(
             "补充上传图片（可选，仅单条模式生效）",
-            type=["jpg", "jpeg", "png", "webp"],
+            type=["jpg", "jpeg", "png", "webp", "heic", "heif", "bmp", "tiff", "gif"],
             accept_multiple_files=True,
         )
 
@@ -1269,7 +1274,7 @@ if mode == "rewrite":
             )
             manual_imgs = st.file_uploader(
                 "笔记图片（可选，截图或保存的图片）",
-                type=["jpg", "jpeg", "png", "webp"],
+                type=["jpg", "jpeg", "png", "webp", "heic", "heif", "bmp", "tiff", "gif"],
                 accept_multiple_files=True,
                 key="manual_imgs",
             )
@@ -1315,7 +1320,7 @@ if mode == "rewrite":
             )
             add_imgs = st.file_uploader(
                 "补充/替换图片",
-                type=["jpg", "jpeg", "png", "webp"],
+                type=["jpg", "jpeg", "png", "webp", "heic", "heif", "bmp", "tiff", "gif"],
                 accept_multiple_files=True,
                 key="add_imgs_edit",
             )
@@ -1404,7 +1409,7 @@ else:
         )
     uploaded_imgs = st.file_uploader(
         "上传图片",
-        type=["jpg", "jpeg", "png", "webp"],
+        type=["jpg", "jpeg", "png", "webp", "heic", "heif", "bmp", "tiff", "gif"],
         accept_multiple_files=True,
         label_visibility="collapsed",
         key="create_img_upload",
