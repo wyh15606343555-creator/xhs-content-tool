@@ -1047,115 +1047,112 @@ if st.session_state.industry_id == "custom":
 # ═══════════════════════════════════════════════════════
 if not st.session_state.selected_mode:
     st.divider()
-    st.markdown("### 第二步：选择工作方式")
+    st.markdown("<div class='step-tag'>Step 2</div>", unsafe_allow_html=True)
+    st.markdown(
+        "<div style='font-size:24px;font-weight:600;color:#1d1d1f;letter-spacing:-0.5px;margin-top:8px;'>"
+        "选择模式</div>"
+        "<div style='font-size:13px;color:#86868b;margin-top:4px;'>"
+        "How would you like to create content?</div>",
+        unsafe_allow_html=True,
+    )
+    st.markdown("<div style='height:12px;'></div>", unsafe_allow_html=True)
 
-    col_a, col_b = st.columns(2)
+    # 竞品参考模式卡片
+    st.markdown(
+        """
+        <div class="card-gray" style="padding:20px;display:flex;align-items:flex-start;gap:16px;cursor:pointer;margin-bottom:12px;">
+            <div class="mode-icon" style="width:44px;height:44px;border-radius:12px;background:#ff2442;
+                        display:flex;align-items:center;justify-content:center;flex-shrink:0;">
+                <span style="font-size:22px;">🔄</span>
+            </div>
+            <div style="flex:1;">
+                <div style="display:flex;align-items:center;gap:8px;margin-bottom:4px;">
+                    <span style="font-size:15px;font-weight:600;color:#1d1d1f;">竞品参考</span>
+                    <span style="font-size:11px;color:#86868b;">Rewrite</span>
+                    <span class="tag-free">FREE</span>
+                </div>
+                <div style="font-size:12px;color:#86868b;line-height:1.5;">
+                    粘贴竞品链接 → AI分析爆文结构 → 改写为你的风格
+                </div>
+                <div style="display:flex;gap:8px;margin-top:8px;">
+                    <span class="tag">文案改写</span>
+                    <span class="tag">去水印</span>
+                    <span class="tag">防查重</span>
+                </div>
+            </div>
+            <div style="color:#c7c7cc;font-size:18px;align-self:center;">›</div>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+    if st.button("选择竞品参考模式", key="mode_sel_a", type="primary", use_container_width=True):
+        st.session_state.selected_mode = "rewrite"
+        st.rerun()
 
-    with col_a:
-        st.markdown(
-            """
-            <div style="border:1px solid #FF2442; border-radius:14px; padding:20px 16px;
-                        min-height:210px; background:#FFF1F3;
-                        box-shadow:0 1px 3px rgba(0,0,0,0.06);">
-            <div style="width:36px; height:36px; border-radius:8px;
-                        background:linear-gradient(135deg,#FF2442,#FF6B81);
-                        display:inline-flex; align-items:center; justify-content:center;
-                        margin:0 auto 8px; display:flex;">
-                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                    <rect x="8" y="2" width="8" height="4" rx="1" ry="1"/><path d="M16 4h2a2 2 0 012 2v14a2 2 0 01-2 2H6a2 2 0 01-2-2V6a2 2 0 012-2h2"/>
-                </svg>
+    # 原创生成模式卡片
+    st.markdown(
+        """
+        <div class="card-gray" style="padding:20px;display:flex;align-items:flex-start;gap:16px;cursor:pointer;">
+            <div class="mode-icon" style="width:44px;height:44px;border-radius:12px;background:#ff8c00;
+                        display:flex;align-items:center;justify-content:center;flex-shrink:0;">
+                <span style="font-size:22px;">✨</span>
             </div>
-            <div style="font-weight:800; text-align:center; font-size:1rem; margin:8px 0;
-                        color:#FF2442; letter-spacing:0.02em;">
-                竞品参考模式
+            <div style="flex:1;">
+                <div style="display:flex;align-items:center;gap:8px;margin-bottom:4px;">
+                    <span style="font-size:15px;font-weight:600;color:#1d1d1f;">原创生成</span>
+                    <span style="font-size:11px;color:#86868b;">Create</span>
+                    <span class="tag-free">FREE</span>
+                </div>
+                <div style="font-size:12px;color:#86868b;line-height:1.5;">
+                    填写店铺信息 → AI创作专属文案 → 美化照片或生成配图
+                </div>
+                <div style="display:flex;gap:8px;margin-top:8px;">
+                    <span class="tag">AI文案</span>
+                    <span class="tag">照片美化</span>
+                    <span class="tag-pro">AI配图 Pro</span>
+                </div>
             </div>
-            <ul style="font-size:0.83rem; color:#6E6E73; padding-left:18px; margin:0 0 12px 0; line-height:1.8;">
-                <li>粘贴竞品小红书笔记链接</li>
-                <li>AI 拆解爆文结构</li>
-                <li>自动改写成你的风格</li>
-                <li>AI去水印 + 隐形防查重</li>
-            </ul>
-            <div style="font-size:0.75rem; color:#86868B;">
-                适合：参考同行爆文、快速出内容
-            </div>
-            </div>
-            """,
-            unsafe_allow_html=True,
-        )
-        st.markdown(
-            "<div style='background:#FFF1F3; border:1px solid #E5E5EA; border-radius:8px; "
-            "padding:6px 10px; font-size:0.78rem; color:#FF2442; margin-top:4px;'>"
-            "文案改写：免费 &nbsp;·&nbsp; 去水印：免费</div>",
-            unsafe_allow_html=True,
-        )
-        if st.button("选择竞品参考模式 →", key="mode_sel_a", type="primary", use_container_width=True):
-            st.session_state.selected_mode = "rewrite"
-            st.rerun()
-
-    with col_b:
-        st.markdown(
-            """
-            <div style="border:1px solid #FF8C00; border-radius:14px; padding:20px 16px;
-                        min-height:210px; background:#FFF8F0;
-                        box-shadow:0 1px 3px rgba(0,0,0,0.06);">
-            <div style="width:36px; height:36px; border-radius:8px;
-                        background:linear-gradient(135deg,#FF8C00,#FFAB40);
-                        display:inline-flex; align-items:center; justify-content:center;
-                        margin:0 auto 8px; display:flex;">
-                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                    <path d="M12 3l1.912 5.813a2 2 0 001.275 1.275L21 12l-5.813 1.912a2 2 0 00-1.275 1.275L12 21l-1.912-5.813a2 2 0 00-1.275-1.275L3 12l5.813-1.912a2 2 0 001.275-1.275L12 3z"/>
-                </svg>
-            </div>
-            <div style="font-weight:800; text-align:center; font-size:1rem; margin:8px 0;
-                        color:#FF8C00; letter-spacing:0.02em;">
-                原创生成模式
-            </div>
-            <ul style="font-size:0.83rem; color:#6E6E73; padding-left:18px; margin:0 0 12px 0; line-height:1.8;">
-                <li>填写你的店铺 / 业务信息</li>
-                <li>AI 根据今日主题创作文案</li>
-                <li>美化真实照片（免费）</li>
-                <li>AI 生成配图（体验版 / 精品版）</li>
-            </ul>
-            <div style="font-size:0.75rem; color:#86868B;">
-                适合：发原创内容、建立品牌形象
-            </div>
-            </div>
-            """,
-            unsafe_allow_html=True,
-        )
-        st.markdown(
-            "<div style='background:#FFF8F0; border:1px solid #E5E5EA; border-radius:8px; "
-            "padding:6px 10px; font-size:0.78rem; color:#FF8C00; margin-top:4px;'>"
-            "文案创作：免费 &nbsp;·&nbsp; 标准配图 &nbsp;·&nbsp; 高清配图（升级解锁）</div>",
-            unsafe_allow_html=True,
-        )
-        if st.button("选择原创生成模式 →", key="mode_sel_b", use_container_width=True):
-            st.session_state.selected_mode = "create"
-            st.rerun()
+            <div style="color:#c7c7cc;font-size:18px;align-self:center;">›</div>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+    if st.button("选择原创生成模式", key="mode_sel_b", use_container_width=True):
+        st.session_state.selected_mode = "create"
+        st.rerun()
 
     st.stop()
 
 
 # 已选择模式后的状态栏
 mode = st.session_state.selected_mode
-mode_label = "竞品参考模式" if mode == "rewrite" else "原创生成模式"
-_mode_icon_color = "#FF2442" if mode == "rewrite" else "#FF8C00"
-
-col_status, col_switch = st.columns([4, 1])
+mode_label = "竞品参考" if mode == "rewrite" else "原创生成"
+_sel_emoji = INDUSTRY_EMOJIS.get(st.session_state.industry_id, "📦")
+_sel_industry = INDUSTRIES[st.session_state.industry_id]["label"]
 _city_label = st.session_state.city or "通用"
+
+col_status, col_switch = st.columns([5, 1])
 with col_status:
     st.markdown(
-        f"<div style='background:#FFF1F3; border:1px solid #FFD6DB; border-radius:10px; "
-        f"padding:10px 14px; font-size:0.88rem; color:#6E6E73;'>"
-        f"<strong style='color:#FF2442;'>✓</strong>&ensp;"
-        f"<strong style='color:#1D1D1F;'>{industry['label']}</strong>"
-        f"&ensp;·&ensp;<span style='color:{_mode_icon_color};'>{mode_label}</span>"
-        f"&ensp;·&ensp;<span style='color:#86868B;'>{_city_label}</span>"
+        f"<div class='status-bar'>"
+        f"<span style='color:#34c759;'>●</span>"
+        f"<span style='font-size:14px;'>{_sel_emoji}</span>"
+        f"<span style='font-weight:500;color:#1d1d1f;'>{_sel_industry}</span>"
+        f"<span style='color:#86868b;'>·</span>"
+        f"<span style='color:#86868b;'>{mode_label}</span>"
+        f"<span style='color:#86868b;'>·</span>"
+        f"<span style='color:#86868b;'>{_city_label}</span>"
         f"</div>",
         unsafe_allow_html=True,
     )
 with col_switch:
-    if st.button("切换模式", use_container_width=True):
+    st.markdown(
+        "<div style='text-align:right;padding-top:12px;'>"
+        "<span id='switch-mode-label' style='font-size:11px;color:#ff2442;font-weight:500;cursor:pointer;'>切换</span>"
+        "</div>",
+        unsafe_allow_html=True,
+    )
+    if st.button("切换", key="switch_mode_btn", use_container_width=True):
         st.session_state.selected_mode = None
         st.session_state.content_ready = False
         st.session_state.rewrite_done = False
