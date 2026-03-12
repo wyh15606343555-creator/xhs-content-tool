@@ -44,6 +44,11 @@ from api import (
 )
 
 
+def render_admin_panel():
+    """管理后台独立视图"""
+    st.info("管理后台加载中...")
+
+
 def render_progress_bar(steps: list[str], current_step: int):
     """渲染水平进度条。current_step 从 0 开始。"""
     nodes_html = []
@@ -981,6 +986,14 @@ with st.sidebar:
         st.rerun()
 
     st.caption("Demo v5.0 · 内测版\n\n遇到问题请截图反馈给 David 15606343555")
+
+
+# ═══════════════════════════════════════════════════════
+#  页面分支：管理视图 / 内容生成
+# ═══════════════════════════════════════════════════════
+if st.session_state.get("admin_view") and st.session_state.invite_code in ADMIN_CODES:
+    render_admin_panel()
+    st.stop()
 
 
 # ═══════════════════════════════════════════════════════
