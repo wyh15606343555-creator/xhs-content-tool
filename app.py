@@ -552,9 +552,9 @@ code, pre {
 
 /* Step 标签 */
 .step-tag {
-    font-size: 11px; font-weight: 600;
+    font-size: 16px; font-weight: 700;
     color: var(--accent); background: var(--bg-selected);
-    padding: 2px 8px; border-radius: var(--radius-xs);
+    padding: 4px 12px; border-radius: var(--radius-xs);
     display: inline-block;
 }
 
@@ -726,6 +726,9 @@ for _k, _v in DEFAULTS.items():
     if _k not in st.session_state:
         st.session_state[_k] = _v
 
+if "admin_view" not in st.session_state:
+    st.session_state.admin_view = False
+
 
 # ═══════════════════════════════════════════════════════
 #  页面1：邀请码 + 手机号登录
@@ -734,10 +737,10 @@ if not st.session_state.authed:
     st.markdown("""
     <div class="gate-box">
         <div class="gate-logo">
-            <div class="gate-logo-icon">R</div>
-            <div class="gate-title">RedNote Agent</div>
+            <div class="gate-logo-icon" style="font-weight:800;">R</div>
+            <div class="gate-title">红薯特工</div>
         </div>
-        <div class="gate-sub">AI-powered content creation for Xiaohongshu</div>
+        <div class="gate-sub">面向小红书的 AI 内容创作助手</div>
     </div>
     """, unsafe_allow_html=True)
 
@@ -749,7 +752,7 @@ if not st.session_state.authed:
             unsafe_allow_html=True,
         )
         _phone_input = st.text_input(
-            "手机号",
+            "phone",
             placeholder="请输入11位手机号",
             max_chars=11,
             label_visibility="collapsed",
@@ -761,7 +764,7 @@ if not st.session_state.authed:
             unsafe_allow_html=True,
         )
         _code_input = st.text_input(
-            "邀请码",
+            "invite_code",
             placeholder="请输入邀请码",
             max_chars=20,
             label_visibility="collapsed",
