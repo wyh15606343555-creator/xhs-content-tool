@@ -1936,9 +1936,19 @@ if st.session_state.content_ready:
                 st.session_state["edited_body"] = _parsed_body
 
             # 可编辑文本框
-            st.markdown("**改写结果** （可直接编辑修改）")
-            edited_title = st.text_area("标题", key="edited_title", height=68)
-            edited_body = st.text_area("正文", key="edited_body", height=300)
+            st.markdown(
+                "<div style='font-size:12px;font-weight:500;color:var(--text-primary);margin-bottom:4px;'>"
+                "标题 <span style='color:var(--text-tertiary);font-weight:400;'>Title</span></div>",
+                unsafe_allow_html=True,
+            )
+            edited_title = st.text_area("标题", key="edited_title", height=68, label_visibility="collapsed")
+            st.markdown("<div style='height:8px;'></div>", unsafe_allow_html=True)
+            st.markdown(
+                "<div style='font-size:12px;font-weight:500;color:var(--text-primary);margin-bottom:4px;'>"
+                "正文 <span style='color:var(--text-tertiary);font-weight:400;'>Body</span></div>",
+                unsafe_allow_html=True,
+            )
+            edited_body = st.text_area("正文", key="edited_body", height=300, label_visibility="collapsed")
 
             # AI 润色按钮
             if st.button("✨ AI 润色一下（消耗1次配额）", key="btn_polish"):
