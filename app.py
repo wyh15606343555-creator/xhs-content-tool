@@ -19,6 +19,7 @@ from config import (
     INDUSTRIES, INDUSTRY_ICONS, ICON_ATTRS, DEFAULTS,
     PRO_GEN_LIMIT, ADMIN_CODES,
     TIER_PLANS, PAYMENT_CONTACT_WECHAT,
+    POST_GOALS, TONE_STYLES,
 )
 from utils import (
     init_db, log_event, save_generation, get_history, get_db,
@@ -27,6 +28,8 @@ from utils import (
     add_pro_quota, get_user_tier,
     check_invite_code, validate_phone, register_or_login, get_all_users,
     make_zip, make_batch_zip,
+    save_store_profile, load_store_profile,
+    try_use_pro_quota, refund_pro_quota,
 )
 from api import (
     try_extract_xhs, download_image_url,
@@ -36,6 +39,7 @@ from api import (
     edit_image_with_gemini,
     remove_watermark_and_protect,
     stealth_anti_hash,
+    analyze_competitor, plan_content_strategy, polish_content,
 )
 
 
@@ -1466,6 +1470,79 @@ else:
 # ═══════════════════════════════════════════════════════
 if st.session_state.content_ready:
     st.divider()
+
+    # ─── Mode A 需求输入面板（仅单条模式） ───
+    _is_batch_check = mode == "rewrite" and len(st.session_state.batch_results) > 1
+    if mode == "rewrite" and not _is_batch_check and (st.session_state.note_title or st.session_state.note_text):
+        st.markdown(
+            '<span class="step-num">1.5</span> **发帖需求**（可选，提升内容质量）',
+            unsafe_allow_html=True,
+        )
+
+        # 店铺资料（可折叠）
+        with st.expander("填写店铺资料（可选，提升差异化效果）", expanded=False):
+            # 自动加载已保存的资料
+            _saved_profile = load_store_profile(
+                st.session_state.user_phone,
+                st.session_state.industry_id or "",
+            )
+            _sp_name = st.text_input(
+                "店铺名称",
+                value=_saved_profile.get("store_name", ""),
+                key="sp_store_name",
+            )
+            _sp_selling = st.text_area(
+                "核心卖点",
+                value=_saved_profile.get("core_selling_points", ""),
+                max_chars=200,
+                key="sp_core_selling",
+                placeholder="如：10年老店、进口材料、明星同款…",
+            )
+            _sp_audience = st.text_input(
+                "目标客群",
+                value=_saved_profile.get("target_audience", ""),
+                key="sp_target_audience",
+                placeholder="如：25-35岁女性、宝妈、健身爱好者…",
+            )
+            if st.button("保存店铺资料", key="btn_save_profile"):
+                _profile = {
+                    "store_name": _sp_name,
+                    "core_selling_points": _sp_selling,
+                    "target_audience": _sp_audience,
+                }
+                save_store_profile(
+                    st.session_state.user_phone,
+                    st.session_state.industry_id or "",
+                    _profile,
+                )
+                st.success("已保存！下次自动加载")
+
+        # 发帖目的 + 语气风格
+        _req_col1, _req_col2 = st.columns(2)
+        with _req_col1:
+            st.session_state.post_goal = st.selectbox(
+                "发帖目的",
+                POST_GOALS,
+                index=POST_GOALS.index(st.session_state.get("post_goal", "种草案例")),
+                key="sel_post_goal",
+            )
+        with _req_col2:
+            st.session_state.tone_style = st.selectbox(
+                "语气风格",
+                TONE_STYLES,
+                index=TONE_STYLES.index(st.session_state.get("tone_style", "温暖亲切")),
+                key="sel_tone_style",
+            )
+
+        st.session_state.extra_requirements = st.text_area(
+            "补充要求（可选）",
+            value=st.session_state.get("extra_requirements", ""),
+            key="ta_extra_req",
+            placeholder="例如：突出性价比、提到新店开业、强调限时优惠…",
+            height=68,
+        )
+
+        st.divider()
 
     _batch = st.session_state.batch_results
     _is_batch_mode = mode == "rewrite" and len(_batch) > 1
