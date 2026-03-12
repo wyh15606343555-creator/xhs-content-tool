@@ -878,6 +878,7 @@ DEFAULTS = dict(
     scene_prompt="",
     feedback_submitted=False,
     scene_tier="",
+    industry_confirmed=False,
 )
 
 

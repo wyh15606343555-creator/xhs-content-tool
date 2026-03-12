@@ -900,104 +900,98 @@ with st.sidebar:
 
 
 # ═══════════════════════════════════════════════════════
-#  页面2：行业选择（12个，3行×4列）
+#  页面2：行业选择（3列网格 + emoji + 中英双语）
 # ═══════════════════════════════════════════════════════
 st.markdown(
-    "<div style='display:flex; align-items:center; gap:12px; margin-bottom:4px;'>"
-    "<div style='width:40px; height:40px; border-radius:10px; "
-    "background:linear-gradient(135deg,#FF2442,#FF6B81); "
-    "display:flex; align-items:center; justify-content:center; flex-shrink:0;'>"
-    "<svg width='22' height='22' viewBox='0 0 24 24' fill='none' stroke='#fff' "
-    "stroke-width='2' stroke-linecap='round' stroke-linejoin='round'>"
-    "<path d='M12 20h9'/><path d='M16.5 3.5a2.12 2.12 0 013 3L7 19l-4 1 1-4z'/>"
-    "</svg></div>"
-    "<div style='font-size:1.6rem; font-weight:800; letter-spacing:-0.03em; color:#1D1D1F;'>"
-    "<span style='color:#FF2442;'>小红书</span>内容 Agent"
-    "</div></div>",
+    "<div class='step-tag'>Step 1</div>",
     unsafe_allow_html=True,
 )
-st.caption("选择行业 → 选择工作方式 → AI 生成专业笔记 → 图片处理 → 一键下载")
-st.divider()
-
-st.markdown("### 第一步：选择你的行业")
+st.markdown(
+    "<div style='font-size:24px;font-weight:600;color:#1d1d1f;letter-spacing:-0.5px;margin-top:8px;'>"
+    "选择行业</div>"
+    "<div style='font-size:13px;color:#86868b;margin-top:4px;'>"
+    "Choose the industry that best describes your business</div>",
+    unsafe_allow_html=True,
+)
 
 industry_keys = list(INDUSTRIES.keys())
-rows = [industry_keys[i:i+4] for i in range(0, len(industry_keys), 4)]
+rows = [industry_keys[i:i+3] for i in range(0, len(industry_keys), 3)]
 
 for row_keys in rows:
-    cols = st.columns(4)
+    cols = st.columns(3)
     for col, ikey in zip(cols, row_keys):
         info = INDUSTRIES[ikey]
-        previewed = st.session_state.get("industry_preview", "") == ikey
-        # 有预览态时，只显示预览卡片高亮，忽略旧的 industry_id
-        has_preview = bool(st.session_state.get("industry_preview", ""))
-        confirmed = (not has_preview) and st.session_state.industry_id == ikey
-        highlighted = previewed or confirmed
-        check = " ✓" if highlighted else ""
-        icon_bg = "linear-gradient(135deg,#FF2442,#FF6B81)" if highlighted else "#F5F5F7"
-        icon_color = "#FFFFFF" if highlighted else "#86868B"
-        sel_cls = "ind-sel" if highlighted else ""
-        svg_icon = INDUSTRY_ICONS.get(ikey, "")
-        svg_icon_colored = svg_icon.replace('stroke="currentColor"', f'stroke="{icon_color}"')
-        # 按钮标签：未选→选择，已高亮→确认进入
-        btn_label = "确认选择 →" if highlighted else "选择"
+        selected = st.session_state.industry_id == ikey
+        emoji = INDUSTRY_EMOJIS.get(ikey, "📦")
+        en_name = INDUSTRY_EN_NAMES.get(ikey, "")
+        sel_cls = "ind-sel" if selected else ""
+        custom_cls = "ind-custom" if ikey == "custom" and not selected else ""
+
         with col:
             st.markdown(
                 f"""
-                <div class="ind-card {sel_cls}" id="card_{ikey}">
-                    <div class="ind-icon" style="background:{icon_bg};">
-                        {svg_icon_colored}
-                    </div>
-                    <div class="ind-name" style="color:{'#FF2442' if highlighted else '#1D1D1F'};">
-                        {info['label']}{check}
-                    </div>
-                    <div class="ind-desc">{info['desc']}</div>
-                    <div class="ind-action">{btn_label}</div>
+                <div class="ind-card {sel_cls} {custom_cls}">
+                    <div class="ind-emoji">{emoji}</div>
+                    <div class="ind-name">{info['label']}</div>
+                    <div class="ind-en">{en_name}</div>
                 </div>
                 """,
                 unsafe_allow_html=True,
             )
-            # 透明按钮覆盖卡片（负责点击交互）
-            if st.button(btn_label, key=f"sel_{ikey}", use_container_width=True):
-                if previewed or confirmed:
-                    # 第二次点击 → 确认选择，进入第二步
-                    st.session_state.industry_id = ikey
-                    st.session_state.industry_preview = ""
-                    st.session_state.selected_mode = None
-                    st.session_state.content_ready = False
-                    st.session_state.rewrite_done = False
-                    st.session_state.images_done = False
-                    st.session_state.rewrite_result = ""
-                    st.session_state.competitor_analysis = None
-                    st.session_state.content_strategy = None
-                    st.session_state.edited_title = ""
-                    st.session_state.edited_body = ""
-                    st.session_state.edited_images = []
-                    st.session_state.note_title = ""
-                    st.session_state.note_text = ""
-                    st.session_state.note_images = []
-                    st.session_state.store_profile = {}
-                    st.session_state.daily_brief = ""
-                    st.session_state.custom_industry_name = ""
-                    st.session_state.create_images = []
-                    st.session_state.dynamic_image_prompt = ""
-                    st.session_state.scene_images = []
-                    st.session_state.scene_prompt = ""
-                    st.session_state.feedback_submitted = False
-                    st.session_state["scene_tier"] = ""
-                else:
-                    # 第一次点击 → 预览选中（高亮 + 浮动动画）
-                    st.session_state.industry_preview = ikey
+            if st.button(info['label'], key=f"sel_{ikey}", use_container_width=True):
+                # 单击直接选中
+                st.session_state.industry_id = ikey
+                st.session_state.industry_confirmed = False
+                st.session_state.selected_mode = None
+                st.session_state.content_ready = False
+                st.session_state.rewrite_done = False
+                st.session_state.images_done = False
+                st.session_state.rewrite_result = ""
+                st.session_state.competitor_analysis = None
+                st.session_state.content_strategy = None
+                st.session_state.edited_title = ""
+                st.session_state.edited_body = ""
+                st.session_state.edited_images = []
+                st.session_state.note_title = ""
+                st.session_state.note_text = ""
+                st.session_state.note_images = []
+                st.session_state.store_profile = {}
+                st.session_state.daily_brief = ""
+                st.session_state.custom_industry_name = ""
+                st.session_state.create_images = []
+                st.session_state.dynamic_image_prompt = ""
+                st.session_state.scene_images = []
+                st.session_state.scene_prompt = ""
+                st.session_state.feedback_submitted = False
+                st.session_state["scene_tier"] = ""
                 st.rerun()
 
-# 底部提示
-if st.session_state.get("industry_preview") and not st.session_state.industry_id:
-    preview_name = INDUSTRIES[st.session_state.industry_preview]["label"]
-    st.success(f"已选中 **{preview_name}**，再次点击「确认选择 →」进入下一步")
-    st.stop()
-
+# 底部确认栏（已选中行业时显示）
 if not st.session_state.industry_id:
     st.info("👆 点击卡片选择你的行业")
+    st.stop()
+
+# 显示确认栏
+_sel_key = st.session_state.industry_id
+_sel_emoji = INDUSTRY_EMOJIS.get(_sel_key, "📦")
+_sel_name = INDUSTRIES[_sel_key]["label"]
+col_info, col_btn = st.columns([3, 1])
+with col_info:
+    st.markdown(
+        f"<div class='status-bar'>"
+        f"<span style='font-size:16px;'>{_sel_emoji}</span>"
+        f"<span style='font-weight:500;color:#1d1d1f;'>{_sel_name}</span>"
+        f"<span style='color:#86868b;'>已选择</span>"
+        f"</div>",
+        unsafe_allow_html=True,
+    )
+with col_btn:
+    if st.button("下一步 →", key="industry_next", type="primary", use_container_width=True):
+        st.session_state.industry_confirmed = True
+        st.rerun()
+
+# 门控：必须点"下一步"才能继续
+if not st.session_state.get("industry_confirmed", False):
     st.stop()
 
 industry = dict(INDUSTRIES[st.session_state.industry_id])  # 浅拷贝，避免修改原模板
