@@ -84,6 +84,33 @@ def render_progress_bar(steps: list[str], current_step: int):
     st.markdown(html, unsafe_allow_html=True)
 
 
+def render_completed_step(step_name: str, summary: str, detail_content_fn=None):
+    """渲染已完成步骤的折叠摘要。detail_content_fn 是一个回调函数，在展开时调用。"""
+    st.markdown(
+        f"<div class='completed-step-summary'>"
+        f"<div style='display:flex;align-items:center;gap:8px;'>"
+        f"<span style='color:#34c759;font-size:14px;'>✓</span>"
+        f"<span style='font-size:12px;color:#86868b;'>{step_name}</span>"
+        f"<span style='font-size:11px;color:#c7c7cc;'>· {summary}</span>"
+        f"</div>"
+        f"</div>",
+        unsafe_allow_html=True,
+    )
+    if detail_content_fn:
+        with st.expander("查看详情"):
+            detail_content_fn()
+
+
+def render_continue_button(next_step_name: str, button_key: str):
+    """渲染'继续'按钮。返回 True 如果被点击。"""
+    return st.button(
+        f"继续 · {next_step_name} →",
+        key=button_key,
+        type="primary",
+        use_container_width=True,
+    )
+
+
 st.set_page_config(
     page_title="小红书内容Agent",
     page_icon="📱",
@@ -1608,6 +1635,12 @@ else:
             st.success(f"内容已确认：{' | '.join(parts)}")
 
 
+# ─── 已完成步骤折叠：Step 1 ───
+if st.session_state.content_ready and st.session_state.rewrite_done:
+    _note_count = len(st.session_state.batch_results) if st.session_state.batch_results else 1
+    _img_count = len(st.session_state.note_images)
+    render_completed_step("提取完成", f"{_note_count} 条笔记 · {_img_count} 张图片")
+
 # ═══════════════════════════════════════════════════════
 #  Step 2：AI 文案处理
 # ═══════════════════════════════════════════════════════
@@ -1992,6 +2025,10 @@ if mode == "rewrite" and st.session_state.rewrite_done and len(st.session_state.
     _final_body = st.session_state.get("edited_body", "")
     if _final_title or _final_body:
         st.session_state.rewrite_result = f"【标题】{_final_title}\n\n【正文】{_final_body}"
+
+# ─── 已完成步骤折叠：Step 2 ───
+if st.session_state.rewrite_done and st.session_state.images_done:
+    render_completed_step("文案处理完成", "AI 改写已完成")
 
 _has_any_images = st.session_state.note_images or any(br.get("images") for br in st.session_state.batch_results)
 if st.session_state.rewrite_done and (_has_any_images or mode == "create"):
@@ -2709,7 +2746,11 @@ if st.session_state.rewrite_done:
 # ═══════════════════════════════════════════════════════
 if st.session_state.rewrite_done and not st.session_state.feedback_submitted:
     st.divider()
-    st.markdown("### 💬 使用反馈")
+    st.markdown(
+        "<div style='font-size:18px;font-weight:600;color:#1d1d1f;'>使用反馈 "
+        "<span style='font-size:12px;color:#86868b;font-weight:400;'>Feedback</span></div>",
+        unsafe_allow_html=True,
+    )
     st.caption("你的反馈直接影响产品下一版迭代方向")
 
     with st.form("feedback_form"):
