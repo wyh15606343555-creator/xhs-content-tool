@@ -70,7 +70,9 @@
 - **无边框优先**：卡片用灰底（`#f5f5f7`）区分层次，不用边框。仅选中状态用 `box-shadow: 0 0 0 2px #ff2442`
 - **中英双语**：所有标题/标签采用「中文 English」格式，增加国际感
 - **红色克制**：`#ff2442` 仅用于按钮、选中状态、Step标签，不用于背景渐变
-- **渐变禁用**：去掉所有 `linear-gradient`，图标/按钮用纯色
+- **渐变禁用**：去掉所有 `linear-gradient`，图标/按钮用纯色。Streamlit 进度条改为纯色 `#ff2442`
+- **焦点状态**：输入框获得焦点时显示 `box-shadow: 0 0 0 2px rgba(255,36,66,0.2)`，保持无边框设计但提供可见焦点指示
+- **字重统一**：全局 heading CSS 从 `font-weight: 700 !important` 改为 `font-weight: 600`
 
 ## 4. 各页面设计
 
@@ -92,6 +94,8 @@
 
 **底部**：
 - `内测阶段 · 仅限受邀用户`（11px, `--text-tertiary`），居中，margin-top: 20px
+
+**表单宽度**：使用 `st.columns([1, 2, 1])` 居中布局（与当前实现相同），不指定固定 px 宽度，由 Streamlit 响应式处理
 
 **移除**：
 - 渐变圆球 Logo
@@ -116,6 +120,8 @@
 - 3 列布局（`st.columns(3)`），gap: 10px
 - 每个卡片：灰底（`#f5f5f7`）无边框，border-radius: 14px，padding: 18px 12px
 - 卡片内容：emoji（28px） + 中文名（13px, font-weight: 500） + 英文名（11px, `--text-secondary`）
+- 图标方案：使用 emoji 替代现有 SVG 图标（`config.py` 中的 `INDUSTRY_ICONS` 保留但不再在行业选择页使用），emoji 更简洁且跨平台一致
+- 各行业 emoji：健身💪 美容💇 教育📚 餐饮🍜 医美✨ 服装👗 法律⚖️ 摄影📷 民宿🏨 珠宝💎 宠物🐾 自定义✨
 - 垂直居中，text-align: center
 
 **选中状态**：
@@ -131,7 +137,9 @@
 
 **交互变更**：
 - 单击选中（去掉预览→确认的两步交互）
-- 选中后底部显示确认栏
+- 从 `config.py` DEFAULTS 中移除 `industry_preview` 字段
+- `app.py` 中删除所有 `industry_preview` 相关逻辑（预览高亮、"再次点击确认"提示）
+- 新流程：单击直接设置 `industry_id`，底部显示确认栏，点"下一步"进入模式选择
 
 **底部确认栏**：
 - 灰底卡片（`#f5f5f7`, border-radius: 12px, padding: 14px 16px）
@@ -139,21 +147,24 @@
 - 右侧：`下一步 →` 按钮（`#ff2442` 背景，border-radius: 8px, padding: 8px 20px）
 - 使用 `st.columns` 实现左右布局
 
-**行业卡片英文名映射**：
+**行业卡片英文名映射**（与 `config.py` INDUSTRIES 完全对应）：
 
-| 中文 | 英文 |
-|------|------|
-| 房产中介 | Real Estate |
-| 餐饮美食 | Dining |
-| 美业 | Beauty |
-| 健身运动 | Fitness |
-| 母婴育儿 | Parenting |
-| 教育培训 | Education |
-| 宠物 | Pets |
-| 旅游民宿 | Travel |
-| 婚庆摄影 | Wedding |
-| 汽车 | Auto |
-| 家居装修 | Home Design |
+| key | 中文 | 英文 | 网格位置 |
+|-----|------|------|----------|
+| `fitness` | 健身私教 | Fitness | 第1行 |
+| `beauty` | 美容美发 | Beauty | 第1行 |
+| `education` | 教育培训 | Education | 第1行 |
+| `food` | 餐饮美食 | Dining | 第2行 |
+| `medical_beauty` | 医疗美容 | Med Aesthetics | 第2行 |
+| `fashion` | 服装销售 | Fashion | 第2行 |
+| `legal` | 法律咨询 | Legal | 第3行 |
+| `photography` | 摄影工作室 | Photography | 第3行 |
+| `hotel` | 民宿&酒店 | Hotel & B&B | 第3行 |
+| `jewelry` | 珠宝黄金 | Jewelry | 第4行 |
+| `pet` | 宠物服务 | Pets | 第4行 |
+| `custom` | 其他行业 | Custom | 第4行（虚线边框） |
+
+共 12 个行业，3列×4行排列。`custom` 卡片始终在最后一个位置。
 
 ### 4.3 模式选择页
 
@@ -179,12 +190,14 @@
 - 名称：`竞品参考 Rewrite`
 - 描述：`粘贴竞品链接 → AI分析爆文结构 → 改写为你的风格`
 - 标签：`文案改写` `去水印` `防查重`
+- FREE 标签：显示（文案改写和去水印均免费）
 
 **原创生成模式**：
 - 图标背景：`#ff8c00`，emoji: ✨
 - 名称：`原创生成 Create`
 - 描述：`填写店铺信息 → AI创作专属文案 → 美化照片或生成配图`
 - 标签：`AI文案` `照片美化` + `AI配图 Pro`（Pro标签用橙色：color `#ff8c00`, background `#fff8f0`）
+- FREE 标签：显示（文案创作和照片美化免费，AI配图 Pro 为付费功能，通过 Pro 标签已标识）
 
 **选中后状态栏**（行业选择确认栏后也复用此组件）：
 - 灰底（`#f5f5f7`），border-radius: 10px，padding: 12px 16px
@@ -202,7 +215,7 @@
   - 未到达：灰色圆（`#e5e5ea`）+ 数字 + 灰色文字 + 灰色连接线
 - 步骤名称（Mode A / 竞品参考）：`提取` `文案` `图片` `下载`
 - 步骤名称（Mode B / 原创生成）：`信息` `文案` `图片` `下载`
-- 使用 `st.columns` 实现，连接线用 `st.markdown` 的 CSS 绘制
+- 使用单个 `st.markdown` HTML 块渲染整个进度条（纯展示，不含交互元素），避免 `st.columns` 的间距问题
 
 **当前步骤展示**：
 - 灰底大卡片（`#f5f5f7`, border-radius: 16px, padding: 20px）包裹当前步骤所有内容
@@ -213,7 +226,7 @@
 - 灰底小卡片（`#f5f5f7`, border-radius: 12px, padding: 14px 16px）
 - 左侧：绿色 ✓ + 步骤名 + 摘要信息（如"1 条笔记 · 3 张图片"）
 - 右侧：`查看` 文字链接，点击展开详情
-- 使用 `st.expander` 实现，自定义样式
+- 实现方式：使用 `st.markdown` 渲染摘要行 + `st.expander` 渲染详情内容（`st.expander` 的 label 设为空或简短文字，详情展开后显示完整内容）。注意 Streamlit 的 `st.expander` header 不支持任意 HTML，因此摘要行的绿色 ✓ 和右侧链接通过独立的 `st.markdown` 实现，`st.expander` 仅用于包裹可折叠的详情区域
 
 **"继续"按钮**：
 - 在当前步骤卡片底部
@@ -235,9 +248,19 @@
 - 评分和文本框样式跟随新设计系统（灰底无边框输入框）
 - 按钮：`提交反馈`，跟随新按钮样式
 
-## 5. CSS 架构变更
+## 5. 响应式设计
 
-### 5.1 新增 CSS 变量
+保留当前 `app.py` 中已有的响应式 CSS（~100 行），但需要为新组件添加断点：
+
+| 断点 | 行业网格 | 模式卡片 | 进度条 |
+|------|----------|----------|--------|
+| >= 768px (桌面) | 3列 | 纵向堆叠，横向布局 | 水平 |
+| 480-767px (平板) | 2列 | 纵向堆叠，横向布局 | 水平（文字隐藏，仅圆点） |
+| < 480px (手机) | 2列 | 纵向堆叠，图标缩小 | 水平（文字隐藏，仅圆点） |
+
+## 6. CSS 架构变更
+
+### 6.1 新增 CSS 变量
 
 在 `st.markdown` 的 `<style>` 块顶部定义 CSS 变量：
 
@@ -261,7 +284,7 @@
 }
 ```
 
-### 5.2 移除的 CSS
+### 6.2 移除的 CSS
 
 - 所有 `linear-gradient` 按钮样式
 - `.ind-card` 的浮动动画（`@keyframes float`）
@@ -269,7 +292,7 @@
 - 输入框的边框样式（改为灰底无边框）
 - 按钮 hover 的渐变效果（改为 `opacity: 0.9` 或 `filter: brightness(0.95)`）
 
-### 5.3 新增的 CSS 类
+### 6.3 新增的 CSS 类
 
 ```css
 /* Step 标签 */
@@ -316,14 +339,16 @@
 }
 ```
 
-## 6. 文件变更清单
+## 7. 文件变更清单
 
 | 文件 | 操作 | 说明 |
 |------|------|------|
-| `app.py` | 修改 | CSS变量替换、登录页重写、行业选择重写、模式选择重写、进度条组件、步骤折叠逻辑 |
-| `config.py` | 修改 | 新增 `INDUSTRY_EN_NAMES` 英文名映射字典 |
+| `app.py` | 修改 | CSS 变量替换、登录页重写、行业选择重写、模式选择重写、进度条组件、步骤折叠逻辑、移除 `industry_preview` 逻辑 |
+| `config.py` | 修改 | 新增 `INDUSTRY_EN_NAMES` 英文名映射字典、移除 DEFAULTS 中的 `industry_preview` |
 
-## 7. 不改动的部分
+注：CSS 保持在 `app.py` 内联（当前 ~600 行，改动后预计不增加总量，因为移除渐变/动画代码与新增变量/类基本抵消）。
+
+## 8. 不改动的部分
 
 - 所有业务逻辑（提取、改写、图片处理、下载）不变
 - 数据库结构不变
@@ -331,12 +356,12 @@
 - 侧边栏不在本次范围（将在管理后台重设计中一并处理）
 - 管理面板不在本次范围（有独立设计规格）
 
-## 8. Streamlit 实现约束
+## 9. Streamlit 实现约束
 
 由于 Streamlit 框架限制，以下设计需要特殊处理：
 
 - **行业卡片单击选中**：使用 `st.button` + session_state，点击直接选中并显示确认栏（去掉两步交互需要调整 `st.button` 回调逻辑）
-- **进度条**：使用 `st.columns` + `st.markdown` 的内联 HTML/CSS 绘制，不依赖 JavaScript
-- **折叠已完成步骤**：使用 `st.expander` 自定义样式实现
+- **进度条**：使用单个 `st.markdown` HTML 块渲染整个进度条（纯展示组件），避免 `st.columns` 的间距问题
+- **折叠已完成步骤**：使用 `st.markdown` 渲染摘要行 + `st.expander` 包裹详情内容（expander header 不支持任意 HTML）
 - **模式卡片箭头**：通过 `st.markdown` 内联 HTML 实现横向布局，`st.button` 覆盖整个卡片区域
 - **底部确认栏/状态栏**：使用 `st.columns` + `st.markdown` + `st.button` 组合
