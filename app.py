@@ -1625,13 +1625,80 @@ if st.session_state.content_ready:
                         # 兼容：第一条同步到旧变量
                         st.session_state.rewrite_result = _batch[0]["rewrite"]
                     elif mode == "rewrite":
-                        _gen_status.update(label=f"{_brain_name} 正在改写文案…")
-                        result = _rewrite_fn(
-                            st.session_state.note_title,
-                            st.session_state.note_text,
-                            industry,
-                            st.session_state.city,
-                        )
+                        # ── 三步链式生成 ──
+                        _step1_ok = False
+                        _step2_ok = False
+
+                        # Step 1: 竞品分析
+                        _gen_status.update(label="Step 1/3：分析竞品笔记…")
+                        try:
+                            analysis = analyze_competitor(
+                                st.session_state.note_title,
+                                st.session_state.note_text,
+                                use_claude=_use_claude,
+                            )
+                            if analysis:
+                                st.session_state.competitor_analysis = analysis
+                                _step1_ok = True
+                        except Exception:
+                            pass  # Step1 失败 → 降级为单步
+
+                        # Step 2: 差异化策略
+                        if _step1_ok:
+                            _gen_status.update(label="Step 2/3：制定差异化策略…")
+                            # 构建店铺资料
+                            _store_data = None
+                            _sp_name = st.session_state.get("sp_store_name", "").strip()
+                            _sp_selling = st.session_state.get("sp_core_selling", "").strip()
+                            _sp_audience = st.session_state.get("sp_target_audience", "").strip()
+                            if _sp_name or _sp_selling or _sp_audience:
+                                _store_data = {
+                                    "store_name": _sp_name,
+                                    "core_selling_points": _sp_selling,
+                                    "target_audience": _sp_audience,
+                                }
+                            try:
+                                strategy = plan_content_strategy(
+                                    analysis=st.session_state.competitor_analysis,
+                                    store_profile=_store_data,
+                                    post_goal=st.session_state.get("post_goal", "种草案例"),
+                                    tone_style=st.session_state.get("tone_style", "温暖亲切"),
+                                    extra_requirements=st.session_state.get("extra_requirements", ""),
+                                    use_claude=_use_claude,
+                                )
+                                if strategy:
+                                    st.session_state.content_strategy = strategy
+                                    _step2_ok = True
+                            except Exception:
+                                pass  # Step2 失败 → 跳过策略
+
+                        # Step 3: 生成内容
+                        _gen_status.update(label="Step 3/3：生成改写内容…" if _step1_ok else f"{_brain_name} 正在改写文案…")
+                        # 降级逻辑：Step2失败但Step1成功时，将分析结果转为简化策略注入
+                        _strategy_param = None
+                        if _step2_ok:
+                            _strategy_param = st.session_state.get("content_strategy")
+                        elif _step1_ok and st.session_state.get("competitor_analysis"):
+                            # Step2 失败降级：用 Step1 分析结果构造简化策略
+                            _analysis = st.session_state.competitor_analysis
+                            _strategy_param = {
+                                "angle": f"针对竞品弱点改进：{'、'.join(_analysis.get('weaknesses', [])[:2])}",
+                                "differentiators": [],
+                                "structure_plan": _analysis.get("structure", ""),
+                                "tone_guide": f"借鉴竞品的情绪触发点：{'、'.join(_analysis.get('emotional_triggers', [])[:3])}",
+                            }
+                        try:
+                            result = _rewrite_fn(
+                                st.session_state.note_title,
+                                st.session_state.note_text,
+                                industry,
+                                st.session_state.city,
+                                content_strategy=_strategy_param,
+                            )
+                        except Exception as step3_err:
+                            # Step3 失败：不消耗配额，提示重试
+                            refund_pro_quota(st.session_state.invite_code)
+                            raise step3_err  # 交给外层 except 处理
                         st.session_state.rewrite_result = result
                         if _batch:
                             _batch[0]["rewrite"] = result
@@ -1647,7 +1714,8 @@ if st.session_state.content_ready:
                             city=st.session_state.city,
                         )
                         log_event(st.session_state.invite_code, "generate_text",
-                                   st.session_state.industry_id, mode)
+                                   st.session_state.industry_id, mode,
+                                   detail=json.dumps({"chain": _step1_ok, "strategy": _step2_ok, "brain": _brain_name}))
                     else:
                         _gen_status.update(label=f"{_brain_name} 正在创作文案…")
                         result = _create_fn(
