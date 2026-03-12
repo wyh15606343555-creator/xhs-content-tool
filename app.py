@@ -44,6 +44,46 @@ from api import (
 )
 
 
+def render_progress_bar(steps: list[str], current_step: int):
+    """渲染水平进度条。current_step 从 0 开始。"""
+    nodes_html = []
+    for i, name in enumerate(steps):
+        if i < current_step:
+            dot_cls = "progress-dot-done"
+            dot_content = "✓"
+            text_color = "#34c759"
+        elif i == current_step:
+            dot_cls = "progress-dot-active"
+            dot_content = str(i + 1)
+            text_color = "#ff2442"
+        else:
+            dot_cls = "progress-dot-pending"
+            dot_content = str(i + 1)
+            text_color = "#86868b"
+
+        node = (
+            f"<div style='display:flex;align-items:center;'>"
+            f"<div class='progress-dot {dot_cls}'>{dot_content}</div>"
+            f"<div class='progress-step-name' style='font-size:11px;color:{text_color};font-weight:500;margin-left:4px;'>{name}</div>"
+            f"</div>"
+        )
+        nodes_html.append(node)
+
+        # 连接线（最后一个节点后不加）
+        if i < len(steps) - 1:
+            line_color = "#34c759" if i < current_step else "#e5e5ea"
+            nodes_html.append(
+                f"<div style='flex:1;height:2px;background:{line_color};margin:0 8px;'></div>"
+            )
+
+    html = (
+        "<div style='display:flex;align-items:center;gap:0;margin-bottom:24px;'>"
+        + "".join(nodes_html)
+        + "</div>"
+    )
+    st.markdown(html, unsafe_allow_html=True)
+
+
 st.set_page_config(
     page_title="小红书内容Agent",
     page_icon="📱",
@@ -1177,6 +1217,24 @@ with col_switch:
 
 st.divider()
 
+# 确定当前步骤
+if mode == "rewrite":
+    _progress_steps = ["提取", "文案", "图片", "下载"]
+else:
+    _progress_steps = ["信息", "文案", "图片", "下载"]
+
+# 判断当前在哪一步
+if st.session_state.images_done:
+    _current_step = 3  # 下载
+elif st.session_state.rewrite_done or st.session_state.get("create_done", False):
+    _current_step = 2  # 图片
+elif st.session_state.content_ready:
+    _current_step = 1  # 文案
+else:
+    _current_step = 0  # 提取/信息
+
+render_progress_bar(_progress_steps, _current_step)
+
 
 # ═══════════════════════════════════════════════════════
 #  Step 1：输入内容（根据模式分流）
@@ -1184,7 +1242,11 @@ st.divider()
 
 # ─── Mode A：粘贴竞品链接（支持批量）───
 if mode == "rewrite":
-    st.markdown('<span class="step-num">1</span> **粘贴竞品小红书笔记链接**', unsafe_allow_html=True)
+    st.markdown(
+        "<div style='font-size:18px;font-weight:600;color:#1d1d1f;'>粘贴竞品笔记链接</div>"
+        "<div style='font-size:12px;color:#86868b;'>Paste Competitor Note Links</div>",
+        unsafe_allow_html=True,
+    )
     st.caption("支持批量：每行粘贴一条分享内容，最多同时处理 10 条")
 
     paste_input = st.text_area(
@@ -1445,7 +1507,11 @@ if mode == "rewrite":
 
 # ─── Mode B：店铺名片 + 今日主题 ───
 else:
-    st.markdown('<span class="step-num">1</span> **填写店铺信息 + 今日主题**', unsafe_allow_html=True)
+    st.markdown(
+        "<div style='font-size:18px;font-weight:600;color:#1d1d1f;'>店铺信息 + 今日主题</div>"
+        "<div style='font-size:12px;color:#86868b;'>Store Info & Daily Topic</div>",
+        unsafe_allow_html=True,
+    )
     st.caption("填写一次，每次只需更新「今日主题」，AI 为你生成专属原创文案")
 
     with st.expander("🏪 店铺名片（填写后长期使用）", expanded=not bool(st.session_state.store_profile)):
@@ -1552,7 +1618,9 @@ if st.session_state.content_ready:
     _is_batch_check = mode == "rewrite" and len(st.session_state.batch_results) > 1
     if mode == "rewrite" and not _is_batch_check and (st.session_state.note_title or st.session_state.note_text):
         st.markdown(
-            '<span class="step-num">1.5</span> **发帖需求**（可选，提升内容质量）',
+            "<div style='font-size:18px;font-weight:600;color:#1d1d1f;'>发帖需求 "
+            "<span style='font-size:12px;color:#86868b;font-weight:400;'>Optional</span></div>"
+            "<div style='font-size:12px;color:#86868b;'>Post Requirements</div>",
             unsafe_allow_html=True,
         )
 
@@ -1633,7 +1701,8 @@ if st.session_state.content_ready:
         btn_label = "✨ 一键生成文案"
 
     st.markdown(
-        f'<span class="step-num">2</span> **{label_2}**',
+        f"<div style='font-size:18px;font-weight:600;color:#1d1d1f;'>{label_2}</div>"
+        f"<div style='font-size:12px;color:#86868b;'>AI Content Processing</div>",
         unsafe_allow_html=True,
     )
     st.caption("🆓 免费功能 · 由语言模型驱动")
@@ -1917,7 +1986,11 @@ if mode == "rewrite" and st.session_state.rewrite_done and len(st.session_state.
 _has_any_images = st.session_state.note_images or any(br.get("images") for br in st.session_state.batch_results)
 if st.session_state.rewrite_done and (_has_any_images or mode == "create"):
     st.divider()
-    st.markdown('<span class="step-num">3</span> **图片处理**', unsafe_allow_html=True)
+    st.markdown(
+        "<div style='font-size:18px;font-weight:600;color:#1d1d1f;'>图片处理</div>"
+        "<div style='font-size:12px;color:#86868b;'>Image Processing</div>",
+        unsafe_allow_html=True,
+    )
 
     _batch = st.session_state.batch_results
     _is_batch_mode = mode == "rewrite" and len(_batch) > 1
@@ -2403,7 +2476,11 @@ if st.session_state.rewrite_done and (_has_any_images or mode == "create"):
 # ═══════════════════════════════════════════════════════
 if st.session_state.rewrite_done:
     st.divider()
-    st.markdown('<span class="step-num">4</span> **打包下载**', unsafe_allow_html=True)
+    st.markdown(
+        "<div style='font-size:18px;font-weight:600;color:#1d1d1f;'>打包下载</div>"
+        "<div style='font-size:12px;color:#86868b;'>Download</div>",
+        unsafe_allow_html=True,
+    )
 
     ts = datetime.now().strftime("%Y%m%d_%H%M%S")
     _batch = st.session_state.batch_results
@@ -2516,7 +2593,11 @@ if st.session_state.rewrite_done:
     #  Step 5：一键准备发布
     # ═══════════════════════════════════════════════════════
     st.divider()
-    st.markdown('<span class="step-num">5</span> **一键准备发布**', unsafe_allow_html=True)
+    st.markdown(
+        "<div style='font-size:18px;font-weight:600;color:#1d1d1f;'>一键准备发布</div>"
+        "<div style='font-size:12px;color:#86868b;'>Quick Publish Prep</div>",
+        unsafe_allow_html=True,
+    )
 
     def _split_title_body(text: str) -> tuple:
         """从文案中拆分标题（第一行）和正文（其余部分）"""
