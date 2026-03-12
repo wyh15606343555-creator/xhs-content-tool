@@ -55,6 +55,16 @@ EVENT_TYPE_LABELS = {
 }
 
 
+def _metric_card(label_cn, label_en, value, color="#1d1d1f"):
+    """管理后台指标卡片 HTML"""
+    return (
+        f'<div style="background:#f5f5f7;border-radius:14px;padding:16px;">'
+        f'<div style="font-size:11px;color:#86868b;">{label_cn} {label_en}</div>'
+        f'<div style="font-size:28px;font-weight:600;color:{color};margin-top:4px;">'
+        f'{value}</div></div>'
+    )
+
+
 def render_admin_panel():
     """管理后台独立视图 — Apple 克制风"""
 
@@ -100,14 +110,6 @@ def render_admin_panel():
             "SELECT COUNT(*) FROM event_log WHERE event_type = 'extract_link' AND success = 1"
         ).fetchone()[0]
         extract_rate = f"{extract_ok / extract_total * 100:.0f}%" if extract_total > 0 else "—"
-
-        def _metric_card(label_cn, label_en, value, color="#1d1d1f"):
-            return (
-                f'<div style="background:#f5f5f7;border-radius:14px;padding:16px;">'
-                f'<div style="font-size:11px;color:#86868b;">{label_cn} {label_en}</div>'
-                f'<div style="font-size:28px;font-weight:600;color:{color};margin-top:4px;">'
-                f'{value}</div></div>'
-            )
 
         row1 = (
             '<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;margin-bottom:12px;">'
@@ -180,6 +182,26 @@ def render_admin_panel():
         </style>
         """, unsafe_allow_html=True)
 
+        # ── 预查询：会员配额（Tab 1 和 Tab 3 共用） ──
+        _tier_labels = {k: v["name"] for k, v in TIER_PLANS.items()}
+        quota_rows = conn.execute(
+            "SELECT invite_code, pro_gen_used, tier, updated_at "
+            "FROM quota_usage ORDER BY pro_gen_used DESC"
+        ).fetchall()
+        df_quota = None
+        if quota_rows:
+            df_quota = pd.DataFrame([
+                {
+                    "邀请码": q["invite_code"],
+                    "会员等级": _tier_labels.get(q["tier"] or "free", "体验版"),
+                    "已使用": q["pro_gen_used"],
+                    "总额度": PRO_GEN_LIMIT,
+                    "剩余": max(PRO_GEN_LIMIT - q["pro_gen_used"], 0),
+                    "最后使用": q["updated_at"][:16] if q["updated_at"] else "—",
+                }
+                for q in quota_rows
+            ])
+
         # ── Tab 切换 ──
         tab_users, tab_industry, tab_recharge, tab_feedback, tab_logs = st.tabs(
             ["👥 用户", "🏆 行业", "💰 充值", "💬 反馈", "🔍 日志"]
@@ -248,23 +270,7 @@ def render_admin_panel():
                 '<div style="font-size:11px;color:#86868b;margin-bottom:8px;">Membership Quota Usage</div>',
                 unsafe_allow_html=True,
             )
-            quota_rows = conn.execute(
-                "SELECT invite_code, pro_gen_used, tier, updated_at "
-                "FROM quota_usage ORDER BY pro_gen_used DESC"
-            ).fetchall()
-            if quota_rows:
-                _tier_labels = {k: v["name"] for k, v in TIER_PLANS.items()}
-                df_quota = pd.DataFrame([
-                    {
-                        "邀请码": q["invite_code"],
-                        "会员等级": _tier_labels.get(q["tier"] or "free", "体验版"),
-                        "已使用": q["pro_gen_used"],
-                        "总额度": PRO_GEN_LIMIT,
-                        "剩余": max(PRO_GEN_LIMIT - q["pro_gen_used"], 0),
-                        "最后使用": q["updated_at"][:16] if q["updated_at"] else "—",
-                    }
-                    for q in quota_rows
-                ])
+            if df_quota is not None:
                 st.dataframe(df_quota, use_container_width=True, hide_index=True)
             else:
                 st.caption("暂无数据")
@@ -424,7 +430,7 @@ def render_admin_panel():
                 '<div style="font-size:11px;color:#86868b;margin-bottom:8px;">Quota Overview</div>',
                 unsafe_allow_html=True,
             )
-            if quota_rows:
+            if df_quota is not None:
                 st.dataframe(df_quota, use_container_width=True, hide_index=True)
             else:
                 st.caption("暂无数据")
