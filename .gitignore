@@ -13,7 +13,8 @@ dist/
 build/
 
 # ── 数据库 ──
-*.db
+# *.db  — 允许提交 xhs_agent.db 用于 Streamlit Cloud 部署
+!xhs_agent.db
 *.db-wal
 *.db-shm
 
