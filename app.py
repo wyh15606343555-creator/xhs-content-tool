@@ -906,6 +906,10 @@ for row_keys in rows:
                     st.session_state.rewrite_done = False
                     st.session_state.images_done = False
                     st.session_state.rewrite_result = ""
+                    st.session_state.competitor_analysis = None
+                    st.session_state.content_strategy = None
+                    st.session_state.edited_title = ""
+                    st.session_state.edited_body = ""
                     st.session_state.edited_images = []
                     st.session_state.note_title = ""
                     st.session_state.note_text = ""
@@ -1101,6 +1105,10 @@ with col_switch:
         st.session_state.rewrite_done = False
         st.session_state.images_done = False
         st.session_state.rewrite_result = ""
+        st.session_state.competitor_analysis = None
+        st.session_state.content_strategy = None
+        st.session_state.edited_title = ""
+        st.session_state.edited_body = ""
         st.session_state.edited_images = []
         st.session_state.note_title = ""
         st.session_state.note_text = ""
@@ -1223,6 +1231,10 @@ if mode == "rewrite":
                 st.session_state.rewrite_done = False
                 st.session_state.images_done = False
                 st.session_state.rewrite_result = ""
+                st.session_state.competitor_analysis = None
+                st.session_state.content_strategy = None
+                st.session_state.edited_title = ""
+                st.session_state.edited_body = ""
                 st.session_state.edited_images = []
 
                 if is_batch:
@@ -1304,6 +1316,10 @@ if mode == "rewrite":
                     st.session_state.content_ready = True
                     st.session_state.rewrite_done = False
                     st.session_state.images_done = False
+                    st.session_state.competitor_analysis = None
+                    st.session_state.content_strategy = None
+                    st.session_state.edited_title = ""
+                    st.session_state.edited_body = ""
                     st.session_state["_show_manual_fallback"] = False
                     st.rerun()
                 else:
@@ -1342,6 +1358,10 @@ if mode == "rewrite":
                         st.session_state.batch_results[0]["images"] = new_imgs
                 st.session_state.rewrite_done = False
                 st.session_state.images_done = False
+                st.session_state.competitor_analysis = None
+                st.session_state.content_strategy = None
+                st.session_state.edited_title = ""
+                st.session_state.edited_body = ""
                 st.success("内容已更新！")
                 st.rerun()
 
@@ -1446,6 +1466,10 @@ else:
             st.session_state.rewrite_done = False
             st.session_state.images_done = False
             st.session_state.rewrite_result = ""
+            st.session_state.competitor_analysis = None
+            st.session_state.content_strategy = None
+            st.session_state.edited_title = ""
+            st.session_state.edited_body = ""
             st.session_state.edited_images = []
             st.session_state.dynamic_image_prompt = ""
             st.session_state.scene_images = []
