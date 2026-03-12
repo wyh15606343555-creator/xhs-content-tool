@@ -12,8 +12,21 @@ import requests
 import streamlit as st
 from PIL import Image
 
-from config import GARBAGE_TITLES
+from config import GARBAGE_TITLES, ANALYZE_PROMPT, STRATEGY_PROMPT, POLISH_PROMPT
 from utils import get_api_key, make_session, log_event, friendly_api_error
+
+
+def parse_ai_json(raw_text: str) -> dict | None:
+    """从 AI 返回文本中提取 JSON，容忍 markdown 代码块包裹。"""
+    text = raw_text.strip()
+    if text.startswith("```"):
+        text = text.split("\n", 1)[1] if "\n" in text else text[3:]
+        if text.endswith("```"):
+            text = text[:-3]
+    try:
+        return json.loads(text.strip())
+    except json.JSONDecodeError:
+        return None
 
 
 # ═══════════════════════════════════════════════════════
@@ -225,12 +238,20 @@ def download_image_url(url: str):
 #  DeepSeek 文案生成
 # ═══════════════════════════════════════════════════════
 
-def rewrite_with_deepseek(title: str, text: str, industry: dict, city: str) -> str:
+def rewrite_with_deepseek(title: str, text: str, industry: dict, city: str,
+                          content_strategy: dict | None = None) -> str:
     """Mode A：调用 DeepSeek 改写竞品文案"""
     from openai import OpenAI
     api_key = get_api_key("DEEPSEEK_API_KEY")
     client = OpenAI(api_key=api_key, base_url="https://api.deepseek.com")
     system = industry["system_prompt"] + f"\n\n目标城市：{city}"
+    if content_strategy:
+        strategy_text = json.dumps(content_strategy, ensure_ascii=False)
+        system += (
+            f"\n\n【内容策略指导】\n"
+            f"请严格按照以下策略改写：\n{strategy_text}\n"
+            f"改写时必须体现策略中的切入角度和差异化卖点。"
+        )
     resp = client.chat.completions.create(
         model="deepseek-chat",
         messages=[
@@ -275,7 +296,8 @@ def generate_original_content(store_profile: dict, brief: str, industry: dict, c
 #  Claude 文案生成（企业版专属）
 # ═══════════════════════════════════════════════════════
 
-def rewrite_with_claude(title: str, text: str, industry: dict, city: str) -> str:
+def rewrite_with_claude(title: str, text: str, industry: dict, city: str,
+                        content_strategy: dict | None = None) -> str:
     """企业版 Mode A：调用 Claude 改写竞品文案"""
     import anthropic
     api_key = get_api_key("ANTHROPIC_API_KEY")
@@ -283,6 +305,13 @@ def rewrite_with_claude(title: str, text: str, industry: dict, city: str) -> str
         raise ValueError("未配置 ANTHROPIC_API_KEY，请联系管理员")
     client = anthropic.Anthropic(api_key=api_key)
     system = industry["system_prompt"] + f"\n\n目标城市：{city}"
+    if content_strategy:
+        strategy_text = json.dumps(content_strategy, ensure_ascii=False)
+        system += (
+            f"\n\n【内容策略指导】\n"
+            f"请严格按照以下策略改写：\n{strategy_text}\n"
+            f"改写时必须体现策略中的切入角度和差异化卖点。"
+        )
     resp = client.messages.create(
         model="claude-sonnet-4-20250514",
         max_tokens=2000,
@@ -323,6 +352,134 @@ def generate_original_with_claude(store_profile: dict, brief: str, industry: dic
         temperature=0.85,
     )
     return resp.content[0].text
+
+
+# ═══════════════════════════════════════════════════════
+#  三步链式生成 + AI 润色
+# ═══════════════════════════════════════════════════════
+
+def analyze_competitor(note_title: str, note_text: str, use_claude: bool = False) -> dict | None:
+    """Step 1: 分析竞品笔记的爆款元素，返回分析 dict 或 None"""
+    content = f"标题：{note_title}\n\n正文：{note_text}"
+    prompt = ANALYZE_PROMPT.format(note_content=content)
+
+    if use_claude:
+        import anthropic
+        api_key = get_api_key("ANTHROPIC_API_KEY")
+        if not api_key:
+            return None
+        client = anthropic.Anthropic(api_key=api_key)
+        resp = client.messages.create(
+            model="claude-sonnet-4-20250514",
+            max_tokens=1000,
+            messages=[{"role": "user", "content": prompt}],
+            temperature=0.3,
+        )
+        raw = resp.content[0].text
+    else:
+        from openai import OpenAI
+        api_key = get_api_key("DEEPSEEK_API_KEY")
+        client = OpenAI(api_key=api_key, base_url="https://api.deepseek.com")
+        resp = client.chat.completions.create(
+            model="deepseek-chat",
+            messages=[{"role": "user", "content": prompt}],
+            temperature=0.3,
+            max_tokens=1000,
+            response_format={"type": "json_object"},
+        )
+        raw = resp.choices[0].message.content
+
+    return parse_ai_json(raw)
+
+
+def plan_content_strategy(analysis: dict, store_profile: dict | None,
+                          post_goal: str, tone_style: str,
+                          extra_requirements: str = "",
+                          use_claude: bool = False) -> dict | None:
+    """Step 2: 基于竞品分析制定差异化内容策略"""
+    store_section = ""
+    if store_profile:
+        parts = []
+        for key in ("store_name", "core_selling_points", "target_audience"):
+            val = store_profile.get(key, "").strip()
+            if val:
+                label_map = {"store_name": "名称", "core_selling_points": "核心卖点",
+                             "target_audience": "目标客群"}
+                parts.append(f"- {label_map.get(key, key)}：{val}")
+        if parts:
+            store_section = "店铺信息：\n" + "\n".join(parts)
+
+    extra_section = f"补充要求：{extra_requirements}" if extra_requirements.strip() else ""
+
+    prompt = STRATEGY_PROMPT.format(
+        analysis_json=json.dumps(analysis, ensure_ascii=False),
+        store_section=store_section,
+        post_goal=post_goal,
+        tone_style=tone_style,
+        extra_requirements_section=extra_section,
+    )
+
+    if use_claude:
+        import anthropic
+        api_key = get_api_key("ANTHROPIC_API_KEY")
+        if not api_key:
+            return None
+        client = anthropic.Anthropic(api_key=api_key)
+        resp = client.messages.create(
+            model="claude-sonnet-4-20250514",
+            max_tokens=1000,
+            messages=[{"role": "user", "content": prompt}],
+            temperature=0.4,
+        )
+        raw = resp.content[0].text
+    else:
+        from openai import OpenAI
+        api_key = get_api_key("DEEPSEEK_API_KEY")
+        client = OpenAI(api_key=api_key, base_url="https://api.deepseek.com")
+        resp = client.chat.completions.create(
+            model="deepseek-chat",
+            messages=[{"role": "user", "content": prompt}],
+            temperature=0.4,
+            max_tokens=1000,
+            response_format={"type": "json_object"},
+        )
+        raw = resp.choices[0].message.content
+
+    return parse_ai_json(raw)
+
+
+def polish_content(title: str, body: str, tone_style: str,
+                   use_claude: bool = False) -> dict | None:
+    """AI 润色：保留用户修改意图，优化小红书风格表达"""
+    prompt = POLISH_PROMPT.format(title=title, body=body, tone_style=tone_style)
+
+    if use_claude:
+        import anthropic
+        api_key = get_api_key("ANTHROPIC_API_KEY")
+        if not api_key:
+            return None
+        client = anthropic.Anthropic(api_key=api_key)
+        resp = client.messages.create(
+            model="claude-sonnet-4-20250514",
+            max_tokens=2000,
+            messages=[{"role": "user", "content": prompt}],
+            temperature=0.6,
+        )
+        raw = resp.content[0].text
+    else:
+        from openai import OpenAI
+        api_key = get_api_key("DEEPSEEK_API_KEY")
+        client = OpenAI(api_key=api_key, base_url="https://api.deepseek.com")
+        resp = client.chat.completions.create(
+            model="deepseek-chat",
+            messages=[{"role": "user", "content": prompt}],
+            temperature=0.6,
+            max_tokens=2000,
+            response_format={"type": "json_object"},
+        )
+        raw = resp.choices[0].message.content
+
+    return parse_ai_json(raw)
 
 
 def generate_dynamic_image_prompt(copy_text: str, industry: dict) -> str:
