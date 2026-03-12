@@ -55,6 +55,25 @@ init_db()
 
 st.markdown("""
 <style>
+/* ── Design Tokens ── */
+:root {
+    --bg-primary: #ffffff;
+    --bg-secondary: #f5f5f7;
+    --bg-selected: #fff1f3;
+    --text-primary: #1d1d1f;
+    --text-secondary: #86868b;
+    --text-tertiary: #c7c7cc;
+    --accent: #ff2442;
+    --accent-orange: #ff8c00;
+    --success: #34c759;
+    --border: #e5e5ea;
+    --divider: #f0f0f0;
+    --radius-lg: 16px;
+    --radius-md: 14px;
+    --radius-sm: 10px;
+    --radius-xs: 4px;
+}
+
 /* ── 隐藏 Streamlit 默认 UI 元素 ── */
 #MainMenu {visibility: hidden !important;}
 header {visibility: hidden !important; height: 0 !important;}
@@ -118,8 +137,8 @@ section[data-testid="stSidebar"] hr {
 
 /* ── Headings ── */
 h1, h2, h3, h4, h5 {
-    color: #1D1D1F !important;
-    font-weight: 700 !important;
+    color: var(--text-primary) !important;
+    font-weight: 600 !important;
     letter-spacing: -0.02em !important;
 }
 h1 { font-size: 2.2rem !important; }
@@ -139,48 +158,35 @@ p, .stMarkdown p { color: #6E6E73 !important; }
     color: #86868B !important;
 }
 
-/* ── Step Number Badge ── */
-.step-num {
-    display: inline-block;
-    background: linear-gradient(135deg, #FF2442, #FF6B81);
-    color: #FFFFFF !important;
-    border-radius: 50%;
-    width: 26px; height: 26px;
-    text-align: center; line-height: 26px;
-    font-size: 0.85rem; font-weight: 900;
-    margin-right: 8px;
-    vertical-align: middle;
-}
-
 /* ── Buttons ── */
 .stButton > button {
     background-color: #FFFFFF !important;
-    color: #1D1D1F !important;
-    border: 1px solid #E5E5EA !important;
-    border-radius: 10px !important;
+    color: var(--text-primary) !important;
+    border: 1px solid var(--border) !important;
+    border-radius: var(--radius-sm) !important;
     box-shadow: 0 1px 2px rgba(0,0,0,0.04);
     transition: all 0.2s ease;
 }
 .stButton > button:hover {
-    border-color: #FF2442 !important;
-    color: #FF2442 !important;
-    background-color: #FFF1F3 !important;
+    border-color: var(--accent) !important;
+    color: var(--accent) !important;
+    background-color: var(--bg-selected) !important;
 }
 .stButton > button[kind="primary"] {
-    background: linear-gradient(135deg, #FF2442, #FF6B81) !important;
+    background-color: var(--accent) !important;
     color: #FFFFFF !important;
     border: none !important;
-    font-weight: 700 !important;
+    font-weight: 600 !important;
     box-shadow: 0 2px 8px rgba(255,36,66,0.25);
 }
 .stButton > button[kind="primary"]:hover {
-    background: linear-gradient(135deg, #FF6B81, #FF8FA0) !important;
+    filter: brightness(0.95) !important;
     color: #FFFFFF !important;
 }
 .stButton > button:disabled {
-    background-color: #F5F5F7 !important;
+    background-color: var(--bg-secondary) !important;
     color: #AEAEB2 !important;
-    border-color: #E5E5EA !important;
+    border-color: var(--border) !important;
     box-shadow: none;
 }
 
@@ -199,25 +205,26 @@ p, .stMarkdown p { color: #6E6E73 !important; }
 /* ── Text Inputs / Text Areas ── */
 .stTextInput input,
 .stTextArea textarea {
-    background-color: #FFFFFF !important;
-    color: #1D1D1F !important;
-    border: 1px solid #E5E5EA !important;
-    border-radius: 10px !important;
-    caret-color: #FF2442;
+    background-color: var(--bg-secondary) !important;
+    color: var(--text-primary) !important;
+    border: none !important;
+    border-radius: var(--radius-sm) !important;
+    padding: 12px 16px !important;
+    caret-color: var(--accent);
 }
 .stTextInput input:focus,
 .stTextArea textarea:focus {
-    border-color: #FF2442 !important;
-    box-shadow: none !important;
+    border: none !important;
+    box-shadow: 0 0 0 2px rgba(255,36,66,0.2) !important;
     outline: none !important;
 }
 .stTextInput input::placeholder,
 .stTextArea textarea::placeholder {
-    color: #AEAEB2 !important;
+    color: var(--text-tertiary) !important;
 }
 .stTextInput label,
 .stTextArea label {
-    color: #86868B !important;
+    color: var(--text-secondary) !important;
     font-size: 0.85rem !important;
 }
 
@@ -271,11 +278,11 @@ p, .stMarkdown p { color: #6E6E73 !important; }
 
 /* ── Progress Bar ── */
 [data-testid="stProgressBar"] > div {
-    background-color: #F2F2F7 !important;
+    background-color: var(--bg-secondary) !important;
     border-radius: 4px !important;
 }
 [data-testid="stProgressBar"] > div > div {
-    background: linear-gradient(90deg, #FF2442, #FF6B81) !important;
+    background-color: var(--accent) !important;
     border-radius: 4px !important;
 }
 
@@ -326,36 +333,43 @@ code, pre {
     font-size: 0.875rem;
 }
 
-/* ── Gate Box (邀请码页) ── */
+/* ── Gate Box (登录页) ── */
 .gate-box {
     text-align: center;
     padding: 4rem 1rem 2.5rem;
 }
 .gate-logo {
-    width: 56px; height: 56px;
-    border-radius: 14px;
-    background: linear-gradient(135deg, #FF2442, #FF6B81);
     display: inline-flex;
-    align-items: center; justify-content: center;
+    align-items: center;
+    justify-content: center;
+    gap: 10px;
     margin-bottom: 1.2rem;
 }
-.gate-title {
-    font-size: 2.8rem;
-    font-weight: 900;
-    margin-bottom: 0.5rem;
-    color: #1D1D1F;
-    letter-spacing: -0.04em;
-    line-height: 1.1;
+.gate-logo-icon {
+    width: 36px; height: 36px;
+    border-radius: 10px;
+    background: var(--accent);
+    display: inline-flex;
+    align-items: center; justify-content: center;
+    color: white;
+    font-weight: 700;
+    font-size: 18px;
 }
-.gate-accent {
-    color: #FF2442;
+.gate-title {
+    font-size: 22px;
+    font-weight: 600;
+    color: var(--text-primary);
+    letter-spacing: -0.02em;
 }
 .gate-sub {
-    color: #86868B;
-    font-size: 0.85rem;
-    letter-spacing: 0.12em;
-    text-transform: uppercase;
-    margin-top: 0.5rem;
+    color: var(--text-secondary);
+    font-size: 13px;
+    margin-top: 4px;
+}
+.gate-footer {
+    color: var(--text-tertiary);
+    font-size: 11px;
+    margin-top: 20px;
 }
 
 /* ── Spinner ── */
@@ -365,20 +379,17 @@ code, pre {
 
 /* ── Industry Cards ── */
 
-/* ── 行业卡片 ── */
-
-/* 同行列等高 + 行间距 */
+/* 同行列等高 */
 [data-testid="stHorizontalBlock"]:has(.ind-card) {
     align-items: stretch !important;
     margin-bottom: 2px !important;
-    row-gap: 14px !important;
+    row-gap: 10px !important;
 }
 [data-testid="stColumn"]:has(.ind-card) {
     display: flex !important;
     flex-direction: column !important;
     position: relative !important;
 }
-/* 让 column → card 之间所有中间层 div 都 flex 撑满（共5层） */
 [data-testid="stColumn"]:has(.ind-card) > div,
 [data-testid="stColumn"]:has(.ind-card) > div > div:first-child,
 [data-testid="stColumn"]:has(.ind-card) > div > div:first-child > div,
@@ -391,8 +402,8 @@ code, pre {
 }
 
 .ind-card {
-    border-radius: 14px;
-    padding: 14px 10px 12px;
+    border-radius: var(--radius-md);
+    padding: 18px 12px;
     text-align: center;
     flex: 1;
     display: flex;
@@ -402,58 +413,43 @@ code, pre {
     gap: 4px;
     overflow: hidden;
     box-sizing: border-box;
-    border: 2px solid #E5E5EA;
-    background: #FFFFFF;
-    transition: all 0.25s ease;
+    border: none;
+    background: var(--bg-secondary);
+    transition: all 0.2s ease;
     cursor: pointer;
 }
 .ind-card.ind-sel {
-    border-color: #FF2442;
-    background: #FFF1F3;
-    box-shadow: 0 4px 16px rgba(255,36,66,0.12);
-    animation: cardFloat 2.5s ease-in-out infinite;
+    background: var(--bg-selected);
+    box-shadow: 0 0 0 2px var(--accent);
 }
-@keyframes cardFloat {
-    0%, 100% { transform: translateY(0); }
-    50% { transform: translateY(-3px); }
+.ind-card.ind-custom {
+    border: 1px dashed #d1d1d6;
+    background: var(--bg-secondary);
 }
-.ind-icon {
-    width: 38px; height: 38px; border-radius: 12px;
-    display: inline-flex; align-items: center; justify-content: center;
-    flex-shrink: 0;
-    transition: transform 0.3s ease;
+.ind-emoji {
+    font-size: 28px;
+    margin-bottom: 4px;
 }
 .ind-name {
-    font-weight: 650; font-size: 0.85rem;
+    font-weight: 500; font-size: 13px;
+    color: var(--text-primary);
     overflow-wrap: break-word; line-height: 1.3;
     transition: color 0.2s ease;
 }
-.ind-desc {
-    font-size: 0.68rem; color: #86868B;
-    overflow-wrap: break-word; line-height: 1.3;
-}
-/* 卡片内的操作标签 */
-.ind-action {
-    margin-top: 6px;
-    font-size: 0.68rem;
-    color: #86868B;
-    font-weight: 500;
-    padding: 3px 14px;
-    border-radius: 10px;
-    background: #F2F2F7;
-    transition: all 0.2s ease;
-    flex-shrink: 0;
-}
-.ind-sel .ind-action {
-    background: linear-gradient(135deg, #FF2442, #FF6B81);
-    color: #FFFFFF;
+.ind-sel .ind-name {
+    color: var(--accent);
     font-weight: 600;
-    font-size: 0.7rem;
-    padding: 4px 16px;
-    box-shadow: 0 2px 8px rgba(255,36,66,0.2);
+}
+.ind-en {
+    font-size: 11px;
+    color: var(--text-secondary);
+    line-height: 1.3;
+}
+.ind-sel .ind-en {
+    color: #ff8a9e;
 }
 
-/* Streamlit 按钮：整个容器绝对定位覆盖卡片，不占据流式空间 */
+/* Streamlit 按钮覆盖卡片 */
 [data-testid="stColumn"]:has(.ind-card) [class*="st-key-sel_"] {
     position: absolute !important;
     inset: 0 !important;
@@ -477,7 +473,6 @@ code, pre {
     padding: 0 !important;
     box-shadow: none !important;
 }
-/* 触摸反馈：通过卡片本身 */
 .ind-card:active {
     transform: scale(0.97);
     filter: brightness(0.96);
@@ -486,6 +481,95 @@ code, pre {
 /* ── Image captions ── */
 [data-testid="stImage"] p { color: #86868B !important; font-size: 0.75rem !important; }
 
+/* ── New Design System Classes ── */
+
+/* Step 标签 */
+.step-tag {
+    font-size: 11px; font-weight: 600;
+    color: var(--accent); background: var(--bg-selected);
+    padding: 2px 8px; border-radius: var(--radius-xs);
+    display: inline-block;
+}
+
+/* 灰底大卡片 */
+.card-gray {
+    background: var(--bg-secondary);
+    border-radius: var(--radius-lg);
+    padding: 20px;
+}
+
+/* 选中卡片 */
+.card-selected {
+    background: var(--bg-selected);
+    box-shadow: 0 0 0 2px var(--accent);
+}
+
+/* 功能标签 */
+.tag {
+    font-size: 10px; color: var(--text-secondary);
+    background: #ebebed; padding: 2px 8px;
+    border-radius: var(--radius-xs);
+    display: inline-block;
+}
+.tag-pro {
+    font-size: 10px;
+    color: var(--accent-orange);
+    background: #fff8f0;
+    padding: 2px 8px;
+    border-radius: var(--radius-xs);
+    display: inline-block;
+}
+.tag-free {
+    font-size: 10px;
+    color: var(--success);
+    background: #f0faf0;
+    padding: 1px 6px;
+    border-radius: 3px;
+    display: inline-block;
+}
+
+/* 进度条节点 */
+.progress-dot {
+    width: 24px; height: 24px;
+    border-radius: 50%;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 11px; font-weight: 600;
+    flex-shrink: 0;
+}
+.progress-dot-done { background: var(--success); color: white; }
+.progress-dot-active { background: var(--accent); color: white; }
+.progress-dot-pending { background: var(--border); color: #999; }
+
+/* 状态栏 */
+.status-bar {
+    background: var(--bg-secondary);
+    border-radius: var(--radius-sm);
+    padding: 12px 16px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 12px;
+}
+
+/* 折叠摘要行 */
+.completed-step-summary {
+    background: var(--bg-secondary);
+    border-radius: 12px;
+    padding: 14px 16px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 8px;
+}
+
+/* ── Download Buttons ── */
+.stDownloadButton > button {
+    background: var(--bg-secondary) !important;
+    color: var(--text-primary) !important;
+    border: none !important;
+    border-radius: var(--radius-md) !important;
+}
+
 /* ── Scrollbar ── */
 ::-webkit-scrollbar { width: 5px; height: 5px; }
 ::-webkit-scrollbar-track { background: #F5F5F7; }
@@ -493,19 +577,16 @@ code, pre {
 ::-webkit-scrollbar-thumb:hover { background: #AEAEB2; }
 
 /* ═══════════════════════════════════════════════
-   MOBILE RESPONSIVE — 竖屏手机优化
+   MOBILE RESPONSIVE
 ═══════════════════════════════════════════════ */
 
-/* ── 平板 & 大屏手机（≤768px）── */
+/* ── 平板（≤768px）── */
 @media (max-width: 768px) {
-    /* 容器减少左右留白 */
     .main .block-container {
         padding-left: 0.8rem !important;
         padding-right: 0.8rem !important;
         padding-top: 1rem !important;
     }
-
-    /* 所有列布局允许换行，默认每列至少占 48%（2列/行） */
     [data-testid="stHorizontalBlock"] {
         flex-wrap: wrap !important;
         gap: 0.5rem !important;
@@ -514,91 +595,58 @@ code, pre {
         min-width: 47% !important;
         flex: 1 1 47% !important;
     }
-
-    /* 标题缩小 */
     h1 { font-size: 1.6rem !important; }
     h3 { font-size: 1rem !important; }
-
-    /* 邀请码门禁页：减少上方留白 */
-    .gate-box {
-        padding: 2rem 0.5rem 1.5rem !important;
-    }
-    .gate-title {
-        font-size: 2rem !important;
-    }
-
-    /* 行业卡片：缩小内边距 */
-    .ind-card {
-        padding: 10px 8px !important;
-    }
-    .ind-icon {
-        width: 34px !important;
-        height: 34px !important;
-        border-radius: 10px !important;
-    }
-    .ind-name { font-size: 0.78rem !important; }
-    .ind-desc { font-size: 0.62rem !important; }
-    .ind-action { font-size: 0.62rem !important; padding: 2px 10px !important; }
-    .ind-sel .ind-action { font-size: 0.65rem !important; padding: 3px 12px !important; }
-
-    /* 侧边栏宽度 */
+    .gate-box { padding: 2rem 0.5rem 1.5rem !important; }
+    .gate-title { font-size: 18px !important; }
+    .ind-card { padding: 14px 8px !important; }
+    .ind-emoji { font-size: 24px !important; }
+    .ind-name { font-size: 12px !important; }
+    .ind-en { font-size: 10px !important; }
     section[data-testid="stSidebar"] {
         min-width: 260px !important;
         max-width: 280px !important;
     }
+    /* 进度条：隐藏步骤名文字 */
+    .progress-step-name { display: none !important; }
 }
 
 /* ── 小屏手机（≤480px）── */
 @media (max-width: 480px) {
-    /* 容器进一步减小留白 */
     .main .block-container {
         padding-left: 0.5rem !important;
         padding-right: 0.5rem !important;
     }
-
-    /* 模式选择卡片、按钮等：单列堆叠 */
     [data-testid="stHorizontalBlock"] > [data-testid="stColumn"] {
         min-width: 100% !important;
         flex: 1 1 100% !important;
     }
-
-    /* 但行业卡片保持 2 列（通过限制特定区域内的列宽）
-       行业卡片区域的列宽覆盖：恢复 48% */
+    /* 行业卡片保持 2 列 */
     [data-testid="stHorizontalBlock"]:has(> [data-testid="stColumn"] .ind-card)
     > [data-testid="stColumn"] {
         min-width: 47% !important;
         flex: 1 1 47% !important;
     }
-
-    /* 标题进一步缩小 */
     h1 { font-size: 1.4rem !important; }
-    .gate-title { font-size: 1.6rem !important; }
-    .gate-sub { font-size: 0.75rem !important; letter-spacing: 0.08em !important; }
+    .gate-title { font-size: 16px !important; }
+    .gate-sub { font-size: 11px !important; }
     .gate-box { padding: 1.5rem 0.3rem 1rem !important; }
-
-    /* 按钮文字缩小避免溢出 */
     .stButton > button {
         font-size: 0.85rem !important;
         padding: 0.5rem 0.8rem !important;
     }
-
-    /* 会员方案卡片：内边距缩小 */
-    .stButton > button[kind="primary"] {
-        font-size: 0.85rem !important;
-    }
+    /* 模式卡片：图标缩小 */
+    .mode-icon { width: 36px !important; height: 36px !important; }
+    .progress-step-name { display: none !important; }
 }
 
-/* ── 极小屏（≤360px，如 iPhone SE）── */
+/* ── 极小屏（≤360px）── */
 @media (max-width: 360px) {
-    .gate-title { font-size: 1.4rem !important; }
+    .gate-title { font-size: 14px !important; }
     h1 { font-size: 1.2rem !important; }
-    .ind-card {
-        padding: 8px 6px !important;
-    }
-    .ind-icon { width: 28px !important; height: 28px !important; }
-    .ind-name { font-size: 0.72rem !important; }
-    .ind-desc { font-size: 0.58rem !important; }
-    .ind-action { font-size: 0.58rem !important; padding: 2px 8px !important; }
+    .ind-card { padding: 10px 6px !important; }
+    .ind-emoji { font-size: 20px !important; }
+    .ind-name { font-size: 11px !important; }
 }
 </style>
 """, unsafe_allow_html=True)
