@@ -44,9 +44,471 @@ from api import (
 )
 
 
+EVENT_TYPE_LABELS = {
+    "login": "登录",
+    "generate": "生成文案",
+    "extract_link": "提取链接",
+    "feedback": "提交反馈",
+    "admin_recharge": "管理员充值",
+    "view_history": "查看历史",
+    "reuse_history": "复用历史文案",
+}
+
+
 def render_admin_panel():
-    """管理后台独立视图"""
-    st.info("管理后台加载中...")
+    """管理后台独立视图 — Apple 克制风"""
+
+    # ── 页头 ──
+    st.markdown(
+        '<div style="margin-bottom:24px;">'
+        '<div style="display:inline-block;font-size:14px;font-weight:700;color:#ff2442;'
+        'background:#fff1f3;padding:4px 12px;border-radius:4px;">ADMIN</div>'
+        '<div style="font-size:22px;font-weight:600;color:#1d1d1f;margin-top:6px;">数据分析</div>'
+        '<div style="font-size:13px;color:#86868b;">Analytics Dashboard</div>'
+        '</div>',
+        unsafe_allow_html=True,
+    )
+
+    # ── 指标卡片 ──
+    conn = None
+    try:
+        conn = get_db()
+        _today = datetime.now().strftime("%Y-%m-%d")
+        _7days_ago = (datetime.now() - timedelta(days=7)).strftime("%Y-%m-%d")
+
+        total_users = conn.execute(
+            "SELECT COUNT(DISTINCT invite_code) FROM event_log"
+        ).fetchone()[0]
+        total_gens = conn.execute(
+            "SELECT COUNT(*) FROM generation_history"
+        ).fetchone()[0]
+        today_gens = conn.execute(
+            "SELECT COUNT(*) FROM generation_history WHERE created_at >= ?",
+            (_today,)
+        ).fetchone()[0]
+        week_gens = conn.execute(
+            "SELECT COUNT(*) FROM generation_history WHERE created_at >= ?",
+            (_7days_ago,)
+        ).fetchone()[0]
+        total_feedbacks = conn.execute(
+            "SELECT COUNT(*) FROM feedback"
+        ).fetchone()[0]
+        extract_total = conn.execute(
+            "SELECT COUNT(*) FROM event_log WHERE event_type = 'extract_link'"
+        ).fetchone()[0]
+        extract_ok = conn.execute(
+            "SELECT COUNT(*) FROM event_log WHERE event_type = 'extract_link' AND success = 1"
+        ).fetchone()[0]
+        extract_rate = f"{extract_ok / extract_total * 100:.0f}%" if extract_total > 0 else "—"
+
+        def _metric_card(label_cn, label_en, value, color="#1d1d1f"):
+            return (
+                f'<div style="background:#f5f5f7;border-radius:14px;padding:16px;">'
+                f'<div style="font-size:11px;color:#86868b;">{label_cn} {label_en}</div>'
+                f'<div style="font-size:28px;font-weight:600;color:{color};margin-top:4px;">'
+                f'{value}</div></div>'
+            )
+
+        row1 = (
+            '<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;margin-bottom:12px;">'
+            + _metric_card("总用户", "Users", total_users)
+            + _metric_card("总生成", "Generated", total_gens)
+            + _metric_card("今日", "Today", today_gens, "#ff2442")
+            + '</div>'
+        )
+        row2 = (
+            '<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;margin-bottom:20px;">'
+            + _metric_card("近7日", "7-Day", week_gens)
+            + _metric_card("提取成功率", "Rate", extract_rate, "#34c759")
+            + _metric_card("反馈", "Feedback", total_feedbacks)
+            + '</div>'
+        )
+        st.markdown(row1 + row2, unsafe_allow_html=True)
+
+        # ── 每日生成趋势 ──
+        st.markdown(
+            '<div style="margin-bottom:4px;">'
+            '<div style="font-size:14px;font-weight:600;color:#1d1d1f;">每日生成趋势</div>'
+            '<div style="font-size:11px;color:#86868b;">Daily Generation Trend</div>'
+            '</div>',
+            unsafe_allow_html=True,
+        )
+        _30days_ago = (datetime.now() - timedelta(days=30)).strftime("%Y-%m-%d")
+        daily_rows = conn.execute(
+            "SELECT DATE(created_at) as day, COUNT(*) as cnt "
+            "FROM generation_history WHERE created_at >= ? "
+            "GROUP BY DATE(created_at) ORDER BY day",
+            (_30days_ago,)
+        ).fetchall()
+        if daily_rows:
+            df_daily = pd.DataFrame([dict(r) for r in daily_rows])
+            df_daily.columns = ["日期", "生成次数"]
+            df_daily = df_daily.set_index("日期")
+            st.line_chart(df_daily)
+        else:
+            st.caption("暂无数据")
+
+        # ── Tab 胶囊形样式 ──
+        st.markdown("""
+        <style>
+        .stTabs [data-baseweb="tab-list"] {
+            gap: 10px;
+            background: transparent;
+            border-bottom: none;
+        }
+        .stTabs [data-baseweb="tab"] {
+            padding: 10px 22px;
+            border-radius: 24px;
+            font-size: 15px;
+            font-weight: 500;
+            background: #f5f5f7;
+            color: #1d1d1f;
+            border: none;
+            white-space: nowrap;
+        }
+        .stTabs [data-baseweb="tab"][aria-selected="true"] {
+            background: #ff2442;
+            color: white;
+            font-weight: 600;
+        }
+        .stTabs [data-baseweb="tab-highlight"] {
+            display: none;
+        }
+        .stTabs [data-baseweb="tab-border"] {
+            display: none;
+        }
+        </style>
+        """, unsafe_allow_html=True)
+
+        # ── Tab 切换 ──
+        tab_users, tab_industry, tab_recharge, tab_feedback, tab_logs = st.tabs(
+            ["👥 用户", "🏆 行业", "💰 充值", "💬 反馈", "🔍 日志"]
+        )
+
+        # ── Tab 1: 用户 ──
+        with tab_users:
+            st.markdown(
+                '<div style="font-size:14px;font-weight:600;color:#1d1d1f;">注册用户</div>'
+                '<div style="font-size:11px;color:#86868b;margin-bottom:8px;">Registered Users</div>',
+                unsafe_allow_html=True,
+            )
+            all_users = get_all_users()
+            if all_users:
+                df_reg = pd.DataFrame([
+                    {
+                        "手机号": u["phone"],
+                        "邀请码": u["invite_code"],
+                        "生成次数": u["gen_count"],
+                        "登录次数": u["login_count"],
+                        "注册时间": u["created_at"][:16] if u["created_at"] else "—",
+                        "最后登录": u["last_login"][:16] if u["last_login"] else "—",
+                        "最后生成": u["last_gen"][:16] if u["last_gen"] else "—",
+                    }
+                    for u in all_users
+                ])
+                st.dataframe(df_reg, use_container_width=True, hide_index=True)
+                st.caption(f"共 {len(all_users)} 个注册用户")
+            else:
+                st.caption("暂无注册用户")
+
+            # 用户活跃排行
+            st.markdown(
+                '<div style="font-size:14px;font-weight:600;color:#1d1d1f;margin-top:16px;">用户活跃排行</div>'
+                '<div style="font-size:11px;color:#86868b;margin-bottom:8px;">User Activity Ranking</div>',
+                unsafe_allow_html=True,
+            )
+            user_rows = conn.execute(
+                "SELECT g.invite_code, COUNT(*) as gen_count, "
+                "MAX(g.created_at) as last_active, "
+                "COUNT(DISTINCT g.industry_id) as industry_count, "
+                "COALESCE(u.phone, '—') as phone "
+                "FROM generation_history g "
+                "LEFT JOIN users u ON g.invite_code = u.invite_code "
+                "GROUP BY g.invite_code "
+                "ORDER BY gen_count DESC LIMIT 20"
+            ).fetchall()
+            if user_rows:
+                df_users = pd.DataFrame([
+                    {
+                        "手机号": r["phone"],
+                        "邀请码": r["invite_code"],
+                        "生成次数": r["gen_count"],
+                        "涉及行业数": r["industry_count"],
+                        "最后活跃": r["last_active"][:16] if r["last_active"] else "—",
+                    }
+                    for r in user_rows
+                ])
+                st.dataframe(df_users, use_container_width=True, hide_index=True)
+            else:
+                st.caption("暂无数据")
+
+            # 会员配额使用
+            st.markdown(
+                '<div style="font-size:14px;font-weight:600;color:#1d1d1f;margin-top:16px;">会员配额使用</div>'
+                '<div style="font-size:11px;color:#86868b;margin-bottom:8px;">Membership Quota Usage</div>',
+                unsafe_allow_html=True,
+            )
+            quota_rows = conn.execute(
+                "SELECT invite_code, pro_gen_used, tier, updated_at "
+                "FROM quota_usage ORDER BY pro_gen_used DESC"
+            ).fetchall()
+            if quota_rows:
+                _tier_labels = {k: v["name"] for k, v in TIER_PLANS.items()}
+                df_quota = pd.DataFrame([
+                    {
+                        "邀请码": q["invite_code"],
+                        "会员等级": _tier_labels.get(q["tier"] or "free", "体验版"),
+                        "已使用": q["pro_gen_used"],
+                        "总额度": PRO_GEN_LIMIT,
+                        "剩余": max(PRO_GEN_LIMIT - q["pro_gen_used"], 0),
+                        "最后使用": q["updated_at"][:16] if q["updated_at"] else "—",
+                    }
+                    for q in quota_rows
+                ])
+                st.dataframe(df_quota, use_container_width=True, hide_index=True)
+            else:
+                st.caption("暂无数据")
+
+        # ── Tab 2: 行业 ──
+        with tab_industry:
+            st.markdown(
+                '<div style="font-size:14px;font-weight:600;color:#1d1d1f;">行业热度排行</div>'
+                '<div style="font-size:11px;color:#86868b;margin-bottom:8px;">Industry Popularity</div>',
+                unsafe_allow_html=True,
+            )
+            industry_rows = conn.execute(
+                "SELECT industry_id, COUNT(*) as cnt FROM generation_history "
+                "GROUP BY industry_id ORDER BY cnt DESC"
+            ).fetchall()
+            if industry_rows:
+                labels = []
+                counts = []
+                for row in industry_rows:
+                    lbl = INDUSTRIES.get(row["industry_id"], {}).get("label", row["industry_id"])
+                    labels.append(lbl)
+                    counts.append(row["cnt"])
+                df_ind = pd.DataFrame({"行业": labels, "使用次数": counts}).set_index("行业")
+                st.bar_chart(df_ind)
+            else:
+                st.caption("暂无数据")
+
+            col_mode, col_tier = st.columns(2)
+            with col_mode:
+                st.markdown(
+                    '<div style="font-size:14px;font-weight:600;color:#1d1d1f;">模式分布</div>'
+                    '<div style="font-size:11px;color:#86868b;margin-bottom:8px;">Mode Distribution</div>',
+                    unsafe_allow_html=True,
+                )
+                mode_rows = conn.execute(
+                    "SELECT mode, COUNT(*) as cnt FROM generation_history GROUP BY mode"
+                ).fetchall()
+                if mode_rows:
+                    mode_map = {"rewrite": "竞品参考", "original": "原创生成"}
+                    df_mode = pd.DataFrame([
+                        {"模式": mode_map.get(r["mode"], r["mode"]), "次数": r["cnt"]}
+                        for r in mode_rows
+                    ]).set_index("模式")
+                    st.bar_chart(df_mode)
+                else:
+                    st.caption("暂无数据")
+
+            with col_tier:
+                st.markdown(
+                    '<div style="font-size:14px;font-weight:600;color:#1d1d1f;">图片档位</div>'
+                    '<div style="font-size:11px;color:#86868b;margin-bottom:8px;">Image Tier</div>',
+                    unsafe_allow_html=True,
+                )
+                tier_rows = conn.execute(
+                    "SELECT image_tier, COUNT(*) as cnt FROM generation_history "
+                    "WHERE image_tier != '' GROUP BY image_tier ORDER BY cnt DESC"
+                ).fetchall()
+                if tier_rows:
+                    tier_map = {"free": "免费", "pro": "Pro"}
+                    df_tier = pd.DataFrame([
+                        {"档位": tier_map.get(r["image_tier"], r["image_tier"]), "次数": r["cnt"]}
+                        for r in tier_rows
+                    ]).set_index("档位")
+                    st.bar_chart(df_tier)
+                else:
+                    st.caption("暂无数据")
+
+            # 自定义行业统计
+            st.markdown(
+                '<div style="font-size:14px;font-weight:600;color:#1d1d1f;margin-top:16px;">自定义行业使用统计</div>'
+                '<div style="font-size:11px;color:#86868b;margin-bottom:8px;">Custom Industry Usage</div>',
+                unsafe_allow_html=True,
+            )
+            custom_rows = conn.execute(
+                "SELECT input_profile, COUNT(*) as cnt, MAX(created_at) as last_used "
+                "FROM generation_history WHERE industry_id = 'custom' AND input_profile != '' "
+                "GROUP BY input_profile ORDER BY cnt DESC"
+            ).fetchall()
+            if custom_rows:
+                _custom_data = []
+                for cr in custom_rows:
+                    try:
+                        _prof = json.loads(cr["input_profile"])
+                        _ind_name = _prof.get("industry_name", "未填写")
+                    except (json.JSONDecodeError, TypeError):
+                        _ind_name = "未填写"
+                    _custom_data.append({
+                        "行业名称": _ind_name,
+                        "使用次数": cr["cnt"],
+                        "最近使用": cr["last_used"][:16] if cr["last_used"] else "—",
+                    })
+                _merged = {}
+                for d in _custom_data:
+                    name = d["行业名称"]
+                    if name in _merged:
+                        _merged[name]["使用次数"] += d["使用次数"]
+                        if d["最近使用"] > _merged[name]["最近使用"]:
+                            _merged[name]["最近使用"] = d["最近使用"]
+                    else:
+                        _merged[name] = d
+                df_custom = pd.DataFrame(list(_merged.values()))
+                df_custom = df_custom.sort_values("使用次数", ascending=False).reset_index(drop=True)
+                st.dataframe(df_custom, use_container_width=True, hide_index=True)
+            else:
+                st.caption("暂无自定义行业使用记录")
+
+        # ── Tab 3: 充值 ──
+        with tab_recharge:
+            st.markdown(
+                '<div style="font-size:14px;font-weight:600;color:#1d1d1f;">充值管理</div>'
+                '<div style="font-size:11px;color:#86868b;margin-bottom:8px;">Recharge Management</div>',
+                unsafe_allow_html=True,
+            )
+            st.caption("用户付款后，在此为其增加额度并设置会员等级")
+            with st.form("admin_recharge_form"):
+                _rc_code = st.text_input("用户邀请码", placeholder="输入用户的邀请码")
+                _rc_tier = st.selectbox(
+                    "会员等级",
+                    options=["plus", "pro", "promax"],
+                    format_func=lambda t: {
+                        "plus": "达人版（¥99/50次）",
+                        "pro": "商家版（¥99/月/100次）",
+                        "promax": "企业版（¥399/月/300次 · 顶级文案）",
+                    }.get(t, t),
+                )
+                _tier_quota = TIER_PLANS[_rc_tier]["quota"]
+                _rc_amount = st.number_input(
+                    "充值额度（次数）", min_value=1, max_value=1000,
+                    value=_tier_quota, step=10,
+                )
+                _rc_note = st.text_input("备注（可选）", placeholder="如：商家版 3月")
+                _rc_submit = st.form_submit_button("确认充值", type="primary")
+                if _rc_submit:
+                    if not _rc_code.strip():
+                        st.error("请输入用户邀请码")
+                    else:
+                        _rc_code_upper = _rc_code.strip().upper()
+                        _before = get_pro_used(_rc_code_upper)
+                        if add_pro_quota(_rc_code_upper, _rc_amount, tier=_rc_tier):
+                            _after = get_pro_used(_rc_code_upper)
+                            _tier_name = TIER_PLANS[_rc_tier]["name"]
+                            st.success(
+                                f"充值成功！ 邀请码 **{_rc_code_upper}** "
+                                f"升级为 **{_tier_name}**，增加 {_rc_amount} 次额度\n\n"
+                                f"已使用：{_before} → {_after}"
+                            )
+                            log_event(
+                                st.session_state.invite_code, "admin_recharge",
+                                detail=f"target={_rc_code_upper} tier={_rc_tier} amount={_rc_amount} note={_rc_note}",
+                            )
+                        else:
+                            st.error("充值失败，请重试")
+
+            # 会员配额概览
+            st.markdown(
+                '<div style="font-size:14px;font-weight:600;color:#1d1d1f;margin-top:16px;">会员配额概览</div>'
+                '<div style="font-size:11px;color:#86868b;margin-bottom:8px;">Quota Overview</div>',
+                unsafe_allow_html=True,
+            )
+            if quota_rows:
+                st.dataframe(df_quota, use_container_width=True, hide_index=True)
+            else:
+                st.caption("暂无数据")
+
+        # ── Tab 4: 反馈 ──
+        with tab_feedback:
+            st.markdown(
+                '<div style="font-size:14px;font-weight:600;color:#1d1d1f;">最近反馈</div>'
+                '<div style="font-size:11px;color:#86868b;margin-bottom:8px;">Recent Feedback</div>',
+                unsafe_allow_html=True,
+            )
+            recent_fb = conn.execute(
+                "SELECT * FROM feedback ORDER BY created_at DESC LIMIT 15"
+            ).fetchall()
+            if recent_fb:
+                df_fb = pd.DataFrame([
+                    {
+                        "评分": fb["rating"],
+                        "反馈内容": fb["feedback_text"] or "（无文字）",
+                        "邀请码": fb["invite_code"],
+                        "行业": INDUSTRIES.get(fb["industry_id"] or "", {}).get("label", fb["industry_id"] or "—"),
+                        "时间": fb["created_at"][:16] if fb["created_at"] else "—",
+                    }
+                    for fb in recent_fb
+                ])
+                st.dataframe(df_fb, use_container_width=True, hide_index=True)
+            else:
+                st.caption("暂无反馈")
+
+        # ── Tab 5: 日志 ──
+        with tab_logs:
+            st.markdown(
+                '<div style="font-size:14px;font-weight:600;color:#1d1d1f;">事件日志</div>'
+                '<div style="font-size:11px;color:#86868b;margin-bottom:8px;">Event Log</div>',
+                unsafe_allow_html=True,
+            )
+            event_rows = conn.execute(
+                "SELECT e.*, COALESCE(u.phone, '—') as phone "
+                "FROM event_log e "
+                "LEFT JOIN users u ON e.invite_code = u.invite_code "
+                "ORDER BY e.created_at DESC LIMIT 50"
+            ).fetchall()
+            if event_rows:
+                df_events = pd.DataFrame([
+                    {
+                        "手机号": r["phone"],
+                        "操作": EVENT_TYPE_LABELS.get(r["event_type"], r["event_type"]),
+                        "行业": r["industry_id"] or "—",
+                        "模式": r["mode"] or "—",
+                        "成功": "✓" if r["success"] else "✗",
+                        "详情": (r["detail"] or "")[:60],
+                        "时间": r["created_at"][:19] if r["created_at"] else "—",
+                    }
+                    for r in event_rows
+                ])
+                st.dataframe(df_events, use_container_width=True, hide_index=True)
+            else:
+                st.caption("暂无事件")
+
+            # 每小时活跃分布
+            st.markdown(
+                '<div style="font-size:14px;font-weight:600;color:#1d1d1f;margin-top:16px;">每小时活跃分布</div>'
+                '<div style="font-size:11px;color:#86868b;margin-bottom:8px;">Hourly Activity</div>',
+                unsafe_allow_html=True,
+            )
+            hourly_rows = conn.execute(
+                "SELECT CAST(strftime('%H', created_at) AS INTEGER) as hour, COUNT(*) as cnt "
+                "FROM generation_history GROUP BY hour ORDER BY hour"
+            ).fetchall()
+            if hourly_rows:
+                hour_data = {r["hour"]: r["cnt"] for r in hourly_rows}
+                df_hour = pd.DataFrame([
+                    {"时段": f"{h:02d}:00", "生成次数": hour_data.get(h, 0)}
+                    for h in range(24)
+                ]).set_index("时段")
+                st.bar_chart(df_hour)
+            else:
+                st.caption("暂无数据")
+
+    except Exception as e:
+        st.error(f"数据库读取失败：{e}")
+    finally:
+        if conn:
+            conn.close()
 
 
 def render_progress_bar(steps: list[str], current_step: int):
