@@ -822,6 +822,14 @@ with st.sidebar:
         st.markdown(f"**欢迎！** {_phone_masked} · `{st.session_state.invite_code}`")
     else:
         st.markdown(f"**欢迎测试！** `{st.session_state.invite_code}`")
+
+    # ── 管理后台入口（仅管理员可见） ──
+    if st.session_state.invite_code in ADMIN_CODES:
+        _admin_label = "← 返回内容生成" if st.session_state.get("admin_view") else "📊 管理后台"
+        if st.button(_admin_label, use_container_width=True, key="btn_admin_toggle"):
+            st.session_state.admin_view = not st.session_state.get("admin_view", False)
+            st.rerun()
+
     st.divider()
 
     st.markdown("**📍 所在城市/区域**")
@@ -888,8 +896,13 @@ with st.sidebar:
         else:
             st.caption("还没有生成记录")
 
-    st.divider()
-    with st.expander("📋 用户须知与免责声明"):
+    # ── 用户须知（精简为一行） ──
+    st.markdown(
+        '<div style="font-size:11px;color:#c7c7cc;text-align:center;padding:8px 0;">'
+        '用户须知 · 免责声明</div>',
+        unsafe_allow_html=True,
+    )
+    with st.expander("查看详情", expanded=False):
         st.markdown("""**一、工具定位**
 
 本工具是一款内容创作效率工具，帮助商家和创作者快速生成高质量的文案初稿与配图参考，降低内容创作门槛，助力账号运营。
@@ -920,7 +933,6 @@ with st.sidebar:
 **五、责任界定**
 
 本工具仅提供内容生成服务，不参与、不控制、不代理用户在任何第三方平台的发布行为。用户使用本工具生成的内容进行发布、传播等行为，应自行确保符合适用法律法规及平台规则，相关责任由用户自行承担。""")
-    st.caption("Demo v5.0 · 内测版\n\n遇到问题请截图反馈给 David 15606343555")
 
     # ── 意见反馈入口（侧边栏，随时可见） ──
     st.divider()
@@ -967,6 +979,8 @@ with st.sidebar:
         for k in list(st.session_state.keys()):
             del st.session_state[k]
         st.rerun()
+
+    st.caption("Demo v5.0 · 内测版\n\n遇到问题请截图反馈给 David 15606343555")
 
 
 # ═══════════════════════════════════════════════════════
