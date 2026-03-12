@@ -85,6 +85,15 @@ def _init_tables(conn: sqlite3.Connection):
         CREATE INDEX IF NOT EXISTS idx_event_log_type ON event_log(event_type);
         CREATE INDEX IF NOT EXISTS idx_event_log_code ON event_log(invite_code);
         CREATE INDEX IF NOT EXISTS idx_history_code ON generation_history(invite_code);
+        CREATE TABLE IF NOT EXISTS store_profiles (
+            id           INTEGER PRIMARY KEY AUTOINCREMENT,
+            phone        TEXT NOT NULL,
+            industry     TEXT NOT NULL,
+            profile_data TEXT NOT NULL DEFAULT '{}',
+            created_at   TEXT DEFAULT (datetime('now')),
+            updated_at   TEXT DEFAULT (datetime('now')),
+            UNIQUE(phone, industry)
+        );
     """)
     # 迁移：为 quota_usage 添加 tier 列（已有表不受影响）
     try:
@@ -484,3 +493,47 @@ def make_batch_zip(batch_results: list, use_edited: bool = True) -> io.BytesIO:
                     zf.writestr(f"{folder}/图片_{i+1}.jpg", ib.getvalue())
     buf.seek(0)
     return buf
+
+
+# ═══════════════════════════════════════════════════════
+#  店铺资料持久化（Mode A 三步链用）
+# ═══════════════════════════════════════════════════════
+
+def save_store_profile(phone: str, industry: str, profile: dict) -> bool:
+    """保存或更新店铺资料（UPSERT）"""
+    conn = None
+    try:
+        conn = _get_db()
+        conn.execute(
+            "INSERT INTO store_profiles (phone, industry, profile_data, updated_at) "
+            "VALUES (?, ?, ?, datetime('now')) "
+            "ON CONFLICT(phone, industry) DO UPDATE SET "
+            "profile_data = excluded.profile_data, updated_at = datetime('now')",
+            (phone.strip(), industry, json.dumps(profile, ensure_ascii=False)),
+        )
+        conn.commit()
+        return True
+    except sqlite3.Error:
+        return False
+    finally:
+        if conn:
+            conn.close()
+
+
+def load_store_profile(phone: str, industry: str) -> dict:
+    """加载已保存的店铺资料，不存在时返回空 dict"""
+    conn = None
+    try:
+        conn = _get_db()
+        row = conn.execute(
+            "SELECT profile_data FROM store_profiles WHERE phone = ? AND industry = ?",
+            (phone.strip(), industry),
+        ).fetchone()
+        if row and row["profile_data"]:
+            return json.loads(row["profile_data"])
+        return {}
+    except (sqlite3.Error, json.JSONDecodeError):
+        return {}
+    finally:
+        if conn:
+            conn.close()
