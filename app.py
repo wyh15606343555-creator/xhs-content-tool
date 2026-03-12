@@ -667,29 +667,41 @@ if not st.session_state.authed:
     st.markdown("""
     <div class="gate-box">
         <div class="gate-logo">
-            <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                <path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 013 3L7 19l-4 1 1-4z"/>
-            </svg>
+            <div class="gate-logo-icon">R</div>
+            <div class="gate-title">RedNote Agent</div>
         </div>
-        <div class="gate-title"><span class="gate-accent">小红书</span>内容 Agent</div>
-        <div class="gate-sub">内测版本 · 邀请码 + 手机号注册</div>
+        <div class="gate-sub">AI-powered content creation for Xiaohongshu</div>
     </div>
     """, unsafe_allow_html=True)
 
     col_l, col_c, col_r = st.columns([1, 2, 1])
     with col_c:
-        st.markdown("### 登录 / 注册")
+        st.markdown(
+            "<div style='font-size:12px;font-weight:500;color:#1d1d1f;margin-bottom:4px;'>"
+            "手机号 <span style='color:#86868b;font-weight:400;'>Phone</span></div>",
+            unsafe_allow_html=True,
+        )
         _phone_input = st.text_input(
             "手机号",
             placeholder="请输入11位手机号",
             max_chars=11,
+            label_visibility="collapsed",
+        )
+
+        st.markdown(
+            "<div style='font-size:12px;font-weight:500;color:#1d1d1f;margin-bottom:4px;margin-top:16px;'>"
+            "邀请码 <span style='color:#86868b;font-weight:400;'>Invite Code</span></div>",
+            unsafe_allow_html=True,
         )
         _code_input = st.text_input(
             "邀请码",
             placeholder="请输入邀请码",
             max_chars=20,
+            label_visibility="collapsed",
         )
-        _login_clicked = st.button("登 录", use_container_width=True, type="primary")
+
+        st.markdown("<div style='height:24px;'></div>", unsafe_allow_html=True)
+        _login_clicked = st.button("开始使用", use_container_width=True, type="primary")
 
         _phone = (_phone_input or "").strip()
         _code = (_code_input or "").strip().upper()
@@ -714,9 +726,10 @@ if not st.session_state.authed:
                 else:
                     st.error(result["msg"])
 
-        st.caption("首次使用自动注册")
-
-        st.caption("没有邀请码？联系 David：15606343555")
+        st.markdown(
+            "<div class='gate-footer'>内测阶段 · 仅限受邀用户</div>",
+            unsafe_allow_html=True,
+        )
 
         st.divider()
         st.caption(
