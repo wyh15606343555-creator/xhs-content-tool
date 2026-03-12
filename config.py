@@ -805,6 +805,40 @@ INDUSTRIES = {
 
 
 # ═══════════════════════════════════════════════════════
+#  行业英文名 & Emoji 映射（UI重设计用）
+# ═══════════════════════════════════════════════════════
+INDUSTRY_EN_NAMES: dict[str, str] = {
+    "fitness": "Fitness",
+    "beauty": "Beauty",
+    "education": "Education",
+    "food": "Dining",
+    "medical_beauty": "Med Aesthetics",
+    "fashion": "Fashion",
+    "legal": "Legal",
+    "photography": "Photography",
+    "hotel": "Hotel & B&B",
+    "jewelry": "Jewelry",
+    "pet": "Pets",
+    "custom": "Custom",
+}
+
+INDUSTRY_EMOJIS: dict[str, str] = {
+    "fitness": "💪",
+    "beauty": "💇",
+    "education": "📚",
+    "food": "🍜",
+    "medical_beauty": "✨",
+    "fashion": "👗",
+    "legal": "⚖️",
+    "photography": "📷",
+    "hotel": "🏨",
+    "jewelry": "💎",
+    "pet": "🐾",
+    "custom": "✨",
+}
+
+
+# ═══════════════════════════════════════════════════════
 #  Session State 默认值
 # ═══════════════════════════════════════════════════════
 DEFAULTS = dict(
@@ -812,7 +846,6 @@ DEFAULTS = dict(
     invite_code="",
     user_phone="",
     industry_id=None,
-    industry_preview="",   # 第一次点击：预览选中（高亮），再次点击确认
     selected_mode=None,    # "rewrite" 或 "create"，由用户选择
     city="",
     # Mode A：竞品参考
