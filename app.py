@@ -1767,13 +1767,83 @@ if st.session_state.content_ready:
                         st.markdown("**改写后** （右上角可复制）")
                         st.code(br["rewrite"], language=None)
         elif mode == "rewrite":
-            c1, c2 = st.columns(2)
-            with c1:
-                st.markdown("**原文**")
-                st.info(f"**{st.session_state.note_title}**\n\n{st.session_state.note_text}")
-            with c2:
-                st.markdown("**改写后** （右上角可复制）")
-                st.code(st.session_state.rewrite_result, language=None)
+            # --- 单条 Mode A 结果展示（升级版）---
+
+            # Step 1/2 分析结果（折叠展示）
+            if st.session_state.get("competitor_analysis"):
+                with st.expander("竞品分析结果", expanded=False):
+                    _analysis = st.session_state.competitor_analysis
+                    if isinstance(_analysis, dict):
+                        if _analysis.get("hooks"):
+                            st.markdown("**Hook 手法：** " + "、".join(_analysis["hooks"]))
+                        if _analysis.get("structure"):
+                            st.markdown(f"**内容结构：** {_analysis['structure']}")
+                        if _analysis.get("emotional_triggers"):
+                            st.markdown("**情绪触发：** " + "、".join(_analysis["emotional_triggers"]))
+                        if _analysis.get("weaknesses"):
+                            st.markdown("**可改进：** " + "、".join(_analysis["weaknesses"]))
+
+            if st.session_state.get("content_strategy"):
+                with st.expander("内容策略", expanded=False):
+                    _strat = st.session_state.content_strategy
+                    if isinstance(_strat, dict):
+                        if _strat.get("angle"):
+                            st.markdown(f"**切入角度：** {_strat['angle']}")
+                        if _strat.get("differentiators"):
+                            st.markdown("**差异化：** " + "、".join(_strat["differentiators"]))
+                        if _strat.get("structure_plan"):
+                            st.markdown(f"**结构建议：** {_strat['structure_plan']}")
+                        if _strat.get("tone_guide"):
+                            st.markdown(f"**语气指导：** {_strat['tone_guide']}")
+
+            # 解析标题和正文（从 【标题】【正文】 格式中提取）
+            _raw_result = st.session_state.rewrite_result or ""
+            _parsed_title = ""
+            _parsed_body = _raw_result
+            _title_match = re.search(r'【标题】\s*(.+?)(?:\n|【正文】)', _raw_result, re.DOTALL)
+            _body_match = re.search(r'【正文】\s*(.+)', _raw_result, re.DOTALL)
+            if _title_match:
+                _parsed_title = _title_match.group(1).strip()
+            if _body_match:
+                _parsed_body = _body_match.group(1).strip()
+
+            # 初始化编辑框（仅首次）
+            if st.session_state.get("edited_title") == "" and _parsed_title:
+                st.session_state["edited_title"] = _parsed_title
+            if st.session_state.get("edited_body") == "" and _parsed_body:
+                st.session_state["edited_body"] = _parsed_body
+
+            # 可编辑文本框
+            st.markdown("**改写结果** （可直接编辑修改）")
+            edited_title = st.text_area("标题", key="edited_title", height=68)
+            edited_body = st.text_area("正文", key="edited_body", height=300)
+
+            # AI 润色按钮
+            if st.button("✨ AI 润色一下（消耗1次配额）", key="btn_polish"):
+                if not try_use_pro_quota(st.session_state.invite_code):
+                    st.error("配额不足，无法润色")
+                else:
+                    with st.spinner("AI 正在润色…"):
+                        try:
+                            _user_tier = get_user_tier(st.session_state.invite_code)
+                            polished = polish_content(
+                                title=st.session_state.get("edited_title", ""),
+                                body=st.session_state.get("edited_body", ""),
+                                tone_style=st.session_state.get("tone_style", "温暖亲切"),
+                                use_claude=(_user_tier == "promax"),
+                            )
+                            if polished and polished.get("title") and polished.get("body"):
+                                st.session_state["edited_title"] = polished["title"]
+                                st.session_state["edited_body"] = polished["body"]
+                                # 同步更新 rewrite_result 用于后续流程
+                                st.session_state.rewrite_result = f"【标题】{polished['title']}\n\n【正文】{polished['body']}"
+                                st.rerun()
+                            else:
+                                refund_pro_quota(st.session_state.invite_code)
+                                st.warning("润色失败，可直接使用当前内容")
+                        except Exception:
+                            refund_pro_quota(st.session_state.invite_code)
+                            st.warning("润色失败，可直接使用当前内容")
         else:
             st.markdown("**生成结果** （右上角可复制）")
             st.code(st.session_state.rewrite_result, language=None)
@@ -1784,6 +1854,13 @@ if st.session_state.content_ready:
 #  Mode A：去水印 + 隐形防查重（Gemini去水印 + PIL隐形处理）
 #  Mode B：方案A 美化原图（Gemini，免费）+ 方案B AI配图（体验版 / 精品版）
 # ═══════════════════════════════════════════════════════
+# 单条 Mode A 时，使用用户编辑后的内容
+if mode == "rewrite" and st.session_state.rewrite_done and len(st.session_state.batch_results) <= 1:
+    _final_title = st.session_state.get("edited_title", "")
+    _final_body = st.session_state.get("edited_body", "")
+    if _final_title or _final_body:
+        st.session_state.rewrite_result = f"【标题】{_final_title}\n\n【正文】{_final_body}"
+
 _has_any_images = st.session_state.note_images or any(br.get("images") for br in st.session_state.batch_results)
 if st.session_state.rewrite_done and (_has_any_images or mode == "create"):
     st.divider()
