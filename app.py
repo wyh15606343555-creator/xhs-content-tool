@@ -712,14 +712,20 @@ p, .stMarkdown p { color: #6E6E73 !important; }
     color: var(--accent) !important;
     background-color: var(--bg-selected) !important;
 }
-.stButton > button[kind="primary"] {
+.stButton > button[kind="primary"],
+.stButton > button[data-testid="stBaseButton-primary"] {
     background-color: var(--accent) !important;
     color: #FFFFFF !important;
     border: none !important;
     font-weight: 600 !important;
     box-shadow: 0 2px 8px rgba(255,36,66,0.25);
 }
-.stButton > button[kind="primary"]:hover {
+.stButton > button[kind="primary"] *,
+.stButton > button[data-testid="stBaseButton-primary"] * {
+    color: #FFFFFF !important;
+}
+.stButton > button[kind="primary"]:hover,
+.stButton > button[data-testid="stBaseButton-primary"]:hover {
     filter: brightness(0.95) !important;
     color: #FFFFFF !important;
 }
